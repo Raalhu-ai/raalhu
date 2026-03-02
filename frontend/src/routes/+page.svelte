@@ -242,16 +242,18 @@
 			activeProjectContext = undefined;
 		}
 
-		appState = 'chat';
-		history.replaceState(history.state, '', `/chat/${sessionId}`);
-
+		// Create session BEFORE transitioning — prevents saveAgentMessages race
 		const userMsg = { id: crypto.randomUUID(), role: 'user' as const, content: text };
-		createSession({
+		await createSession({
 			id: sessionId,
 			model: selectedModel,
 			messages: [userMsg],
 			projectId: activeProjectId || undefined,
-		}).then(refreshSessions);
+		});
+		refreshSessions();
+
+		appState = 'chat';
+		history.replaceState(history.state, '', `/chat/${sessionId}`);
 	}
 
 	async function startChatInProject(text: string) {
@@ -473,6 +475,7 @@
 				<ArtifactsPage
 					onNewArtifact={() => { creatingArtifact = true; }}
 					onSelectCard={(id) => { selectedInspirationId = id; }}
+					onOpenSession={(sessionId) => { showingArtifacts = false; resumeSession(sessionId); }}
 				/>
 			{:else if appState === 'dashboard' && showingProjects && creatingProject}
 				<ProjectCreatePage

@@ -122,10 +122,10 @@
 		await renderAsync(buffer, container, undefined, {
 			className: 'docx',
 			inWrapper: true,
-			ignoreWidth: false,
-			ignoreHeight: false,
+			ignoreWidth: true,
+			ignoreHeight: true,
 			ignoreFonts: false,
-			breakPages: true,
+			breakPages: false,
 			renderHeaders: true,
 			renderFooters: true,
 			renderFootnotes: true,
@@ -265,12 +265,16 @@
 		background: #e8e8e8;
 		padding: 20px;
 		min-height: 100%;
+		display: flex;
+		flex-direction: column;
 	}
 
 	:global(.docx-host .docx-wrapper > section.docx) {
 		background: white;
 		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
 		margin: 0 auto 20px;
+		flex: 1;
+		width: 100%;
 	}
 
 	/* xlsx: table styling */

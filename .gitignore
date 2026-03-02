@@ -33,3 +33,6 @@ quantize.py
 
 # STT models (served from R2)
 frontend/static/models/
+
+# Quantization test workspace (temporary)
+tester/

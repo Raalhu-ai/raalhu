@@ -7,10 +7,12 @@
 
 	let {
 		onNewArtifact = () => {},
-		onSelectCard = (_id: string) => {}
+		onSelectCard = (_id: string) => {},
+		onOpenSession = (_sessionId: string) => {}
 	}: {
 		onNewArtifact?: () => void;
 		onSelectCard?: (id: string) => void;
+		onOpenSession?: (sessionId: string) => void;
 	} = $props();
 
 	let activeTab = $state<'inspiration' | 'yours'>('inspiration');
@@ -32,10 +34,26 @@
 	let loadingArtifacts = $state(true);
 
 	/** Returns true if the mime type is likely to contain readable text */
+	const TEXT_MIME_TYPES = new Set([
+		'application/json',
+		'application/xml',
+		'application/javascript',
+		'application/x-javascript',
+		'application/x-python',
+		'application/x-python-code',
+		'application/sql',
+		'application/xhtml+xml',
+		'application/ld+json',
+		'application/x-yaml',
+		'application/toml',
+		'application/x-sh',
+		'application/typescript',
+		'image/svg+xml',
+	]);
+
 	function isTextMime(mime: string): boolean {
 		if (mime.startsWith('text/')) return true;
-		if (mime.includes('json') || mime.includes('xml') || mime.includes('javascript') || mime.includes('python')) return true;
-		return false;
+		return TEXT_MIME_TYPES.has(mime);
 	}
 
 	/** Decode base64 to utf-8 string */
@@ -492,7 +510,7 @@
 				<!-- Artifact cards grid -->
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-4">
 					{#each userArtifacts as artifact (artifact.id)}
-						<button class="group text-right">
+						<button class="group text-right" onclick={() => onOpenSession(artifact.sessionId)}>
 							<!-- Preview card -->
 							<div
 								class="aspect-[4/3] rounded-2xl border border-border/60 overflow-hidden mb-3

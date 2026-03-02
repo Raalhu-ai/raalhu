@@ -117,10 +117,12 @@ export async function deleteSession(id: string): Promise<void> {
 // --- Agent mode persistence ---
 
 export async function saveAgentMessages(sessionId: string, messages: any[]): Promise<void> {
-	// Strip Blob URLs from artifacts before serializing (they're not valid across sessions)
+	// Strip Blob URLs from artifact steps before serializing (they're not valid across sessions)
 	const cleaned = messages.map((m: any) => ({
 		...m,
-		artifacts: m.artifacts?.map((a: any) => ({ ...a, url: '' }))
+		steps: m.steps?.map((s: any) =>
+			s.kind === 'artifact' ? { ...s, url: '' } : s
+		)
 	}));
 	await db.sessions.update(sessionId, {
 		agentMessages: JSON.stringify(cleaned),
