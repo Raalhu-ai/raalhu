@@ -1,0 +1,42 @@
+{
+  "name": "mogger-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ai-sdk/svelte": "^2",
+    "@huggingface/transformers": "^3.8.1",
+    "@sveltejs/adapter-auto": "^6",
+    "@sveltejs/kit": "^2",
+    "@sveltejs/vite-plugin-svelte": "^5",
+    "ai": "^4",
+    "clsx": "^2",
+    "dexie": "^4.3.0",
+    "docx-preview": "^0.3.7",
+    "highlight.js": "^11.11.1",
+    "lucide-svelte": "^0.468",
+    "marked": "^17.0.3",
+    "svelte": "^5",
+    "tailwind-merge": "^3",
+    "vaul-svelte": "^0.3.2",
+    "vite": "^6",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@internationalized/date": "^3.11.0",
+    "@lucide/svelte": "^0.561.0",
+    "@sveltejs/adapter-cloudflare": "^7.2.8",
+    "@tailwindcss/vite": "^4",
+    "bits-ui": "^2.15.6",
+    "sharp": "^0.34.5",
+    "tailwind-variants": "^3.2.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,30 @@
+name = "mogger-api"
+main = "src/worker.ts"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "AUTH_SESSIONS"
+id = "50aed465261241dbb185983e86ea9d98"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "e269c11a1e4b454aa6fe6e0c81eba26f"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
+# Secrets (set via `wrangler secret put`):
+#   OAUTH_CLIENT_ID     — Google OAuth client ID (Gemini CLI's installed-app client)
+#   OAUTH_CLIENT_SECRET — Google OAuth client secret

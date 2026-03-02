@@ -1,0 +1,35 @@
+node_modules/
+
+# SvelteKit
+frontend/.svelte-kit/
+frontend/build/
+
+# Environment
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & dumps
+*.log
+*.stackdump
+
+# Editor
+.vscode/
+.idea/
+
+# Wrangler
+server/.wrangler/
+
+# Whisper quantization (temporary)
+venv/
+whisper-quantize-env/
+whisper-dv-*/
+quantize.py
+
+# STT models (served from R2)
+frontend/static/models/
