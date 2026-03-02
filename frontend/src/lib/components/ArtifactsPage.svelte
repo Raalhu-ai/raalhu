@@ -492,7 +492,7 @@
 				<!-- Artifact cards grid -->
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-4">
 					{#each userArtifacts as artifact (artifact.id)}
-						<button class="group text-left">
+						<button class="group text-right">
 							<!-- Preview card -->
 							<div
 								class="aspect-[4/3] rounded-2xl border border-border/60 overflow-hidden mb-3
