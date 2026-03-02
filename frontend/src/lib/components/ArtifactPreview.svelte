@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { X, Download, RotateCw, Loader2, FileText } from 'lucide-svelte';
 	import type { Artifact } from '$lib/agent/types';
 
@@ -29,6 +30,19 @@
 
 	// Text/code
 	let textContent = $state('');
+
+	// Track scroll container height for docx min-height
+	let scrollRoot = $state<HTMLDivElement>();
+	let scrollRootHeight = $state(0);
+
+	onMount(() => {
+		if (!scrollRoot) return;
+		const ro = new ResizeObserver(([entry]) => {
+			scrollRootHeight = entry.contentRect.height;
+		});
+		ro.observe(scrollRoot);
+		return () => ro.disconnect();
+	});
 
 	function getExt(filename: string): string {
 		return filename.split('.').pop()?.toLowerCase() || '';
@@ -169,7 +183,7 @@
 	</div>
 
 	<!-- Preview body -->
-	<div class="flex-1 overflow-auto relative">
+	<div bind:this={scrollRoot} class="flex-1 overflow-auto relative min-h-0">
 		{#if loading || rendering}
 			<div class="flex items-center justify-center h-full">
 				<Loader2 class="w-6 h-6 animate-spin text-muted-foreground" />
@@ -190,7 +204,8 @@
 		{#if previewType === 'docx'}
 			<div
 				bind:this={docxContainer}
-				class="docx-host min-h-full"
+				class="docx-host"
+				style="min-height: {scrollRootHeight}px"
 				class:hidden={loading || rendering || !!error}
 			></div>
 		{/if}
@@ -260,11 +275,17 @@
 </div>
 
 <style>
+	/* docx host: fill the scroll container */
+	:global(.docx-host) {
+		display: flex;
+		flex-direction: column;
+	}
+
 	/* docx-preview: page wrapper styling */
 	:global(.docx-host .docx-wrapper) {
 		background: #e8e8e8;
 		padding: 20px;
-		min-height: 100%;
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 	}

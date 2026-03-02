@@ -507,6 +507,7 @@
 					onRefreshProjects={refreshProjects}
 				/>
 			{:else if appState === 'chat' && activeSessionId}
+				{#key activeSessionId}
 				<div class="flex-1 overflow-hidden h-full">
 					<AgentChat
 						bind:model={selectedModel}
@@ -523,6 +524,7 @@
 						onArtifactOpen={() => { sidebarOpen = false; sidebarCollapsed = true; }}
 					/>
 				</div>
+				{/key}
 			{/if}
 		</div>
 	</div>

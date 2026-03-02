@@ -362,6 +362,33 @@
 					sandboxLoading = false;
 					sandboxStep = '';
 				}
+
+				// Recreate blob URLs for artifact steps from fsSnapshot base64 data
+				let restored = 0;
+				for (const msg of messages) {
+					if (!msg.steps) continue;
+					for (const step of msg.steps) {
+						if (step.kind !== 'artifact' || step.url) continue;
+						const fname = (step as any).filename as string;
+						const matchingPath = Object.keys(fsSnapshot).find(
+							(p) => p.endsWith('/' + fname) || p === fname
+						);
+						if (matchingPath && fsSnapshot[matchingPath]) {
+							try {
+								const bin = atob(fsSnapshot[matchingPath]);
+								const bytes = new Uint8Array(bin.length);
+								for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+								const blob = new Blob([bytes], { type: (step as any).mimeType || 'application/octet-stream' });
+								(step as any).url = URL.createObjectURL(blob);
+								restored++;
+							} catch { /* skip corrupt entries */ }
+						}
+					}
+				}
+				if (restored > 0) {
+					messages = [...messages];
+					console.log(`[AgentChat] Restored ${restored} artifact blob URLs from FS snapshot`);
+				}
 			}
 
 			titleRequested = true;
@@ -634,11 +661,33 @@
 		a.click();
 	}
 
-	function openArtifact(step: AgentStep) {
-		if (step.kind === 'artifact') {
-			activeArtifact = { url: step.url, label: step.label, filename: step.filename, mimeType: step.mimeType };
-			onArtifactOpen();
+	async function openArtifact(step: AgentStep) {
+		if (step.kind !== 'artifact') return;
+		let url = step.url;
+
+		// Reconstruct blob URL from fsSnapshot if missing (e.g. after page refresh)
+		if (!url) {
+			const fs = await loadAgentFS(sessionId);
+			if (fs) {
+				const fname = step.filename;
+				const matchingPath = Object.keys(fs).find(
+					(p) => p.endsWith('/' + fname) || p === fname
+				);
+				if (matchingPath && fs[matchingPath]) {
+					try {
+						const bin = atob(fs[matchingPath]);
+						const bytes = new Uint8Array(bin.length);
+						for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+						const blob = new Blob([bytes], { type: step.mimeType || 'application/octet-stream' });
+						url = URL.createObjectURL(blob);
+						(step as any).url = url;
+					} catch { /* skip */ }
+				}
+			}
 		}
+
+		activeArtifact = { url, label: step.label, filename: step.filename, mimeType: step.mimeType };
+		onArtifactOpen();
 	}
 
 	function getArtifactTypeLabel(filename: string): string {
