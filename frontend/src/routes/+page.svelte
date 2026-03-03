@@ -303,22 +303,27 @@
 		const session = await getSession(id);
 		if (!session) return false;
 
-		activeSessionId = id;
+		// Load all data BEFORE setting activeSessionId — {#key} remounts AgentChat
+		// immediately when activeSessionId changes, so props must be ready first
 		const agentMsgs = await loadAgentMessages(id);
-		agentInitialMessages = agentMsgs || [];
-		pendingUserMessage = '';
+		const msgs = agentMsgs || [];
+		let projId: string | null = null;
+		let proj: Project | null = null;
+		let projCtx: ProjectContext | undefined = undefined;
 
-		// Load project context if session belongs to a project
 		if (session.projectId) {
-			activeProjectId = session.projectId;
-			activeProject = (await getProject(session.projectId)) ?? null;
-			activeProjectContext = await buildProjectContext(session.projectId);
-		} else {
-			activeProjectId = null;
-			activeProject = null;
-			activeProjectContext = undefined;
+			projId = session.projectId;
+			proj = (await getProject(session.projectId)) ?? null;
+			projCtx = await buildProjectContext(session.projectId);
 		}
 
+		// Set all state then trigger render — activeSessionId last since {#key} depends on it
+		agentInitialMessages = msgs;
+		pendingUserMessage = '';
+		activeProjectId = projId;
+		activeProject = proj;
+		activeProjectContext = projCtx;
+		activeSessionId = id;
 		appState = 'chat';
 		sidebarOpen = false;
 		return true;
