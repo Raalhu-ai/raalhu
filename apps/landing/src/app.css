@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+/* --- Thaana Fonts --- */
+@font-face {
+	font-family: "MV Typewriter";
+	src: url("/fonts/mvtyper.ttf") format("truetype");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "MV Typewriter";
+	src: url("/fonts/mvtypebold.ttf") format("truetype");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Sangu Suruhee";
+	src:
+		url("/fonts/SanguSuruhee-Regular.woff2") format("woff2"),
+		url("/fonts/SanguSuruhee-Regular.woff") format("woff");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* --- Theme --- */
+:root {
+	--card: #ffffff;
+	--ring: #1a3a8a;
+	--input: #d1d5db;
+	--muted: #edf0f7;
+	--accent: #e3e7f2;
+	--border: #d1d5db;
+	--popover: #ffffff;
+	--primary: #1a3a8a;
+	--secondary: #d4dff5;
+	--background: #f7f8fa;
+	--foreground: #1a1c1e;
+	--destructive: #e54d2e;
+	--card-foreground: #1a1c1e;
+	--muted-foreground: #6b7280;
+	--accent-foreground: #1a1c1e;
+	--popover-foreground: #1a1c1e;
+	--primary-foreground: #ffffff;
+	--secondary-foreground: #142c66;
+	--destructive-foreground: #ffffff;
+}
+
+.dark {
+	--card: #2c2d2f;
+	--ring: #7d9fe3;
+	--input: #3f4245;
+	--muted: #2e3033;
+	--accent: #323438;
+	--border: #363839;
+	--popover: #2c2d2f;
+	--primary: #7d9fe3;
+	--secondary: #1a2a4a;
+	--background: #242526;
+	--foreground: #e8eaed;
+	--destructive: #e54d2e;
+	--card-foreground: #e8eaed;
+	--muted-foreground: #9ca3af;
+	--accent-foreground: #e8eaed;
+	--popover-foreground: #e8eaed;
+	--primary-foreground: #0a1530;
+	--secondary-foreground: #7d9fe3;
+	--destructive-foreground: #ffffff;
+}
+
+@theme inline {
+	--color-card: var(--card);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
+	--color-muted: var(--muted);
+	--color-accent: var(--accent);
+	--color-border: var(--border);
+	--color-popover: var(--popover);
+	--color-primary: var(--primary);
+	--color-secondary: var(--secondary);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-destructive: var(--destructive);
+	--color-card-foreground: var(--card-foreground);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-destructive-foreground: var(--destructive-foreground);
+
+	--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	--font-thaana: "MV Typewriter", sans-serif;
+	--font-thaana-heading: "Sangu Suruhee", "MV Typewriter", sans-serif;
+}
+
+html, body {
+	background: var(--background);
+	margin: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 6px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--input);
+}
+
+::selection {
+	background: color-mix(in srgb, var(--primary) 30%, transparent);
+	color: var(--foreground);
+}
+
+/* Thaana text utility */
+.thaana {
+	font-family: var(--font-thaana);
+	direction: rtl;
+	line-height: 1.8;
+}
+
+.thaana-heading {
+	font-family: var(--font-thaana-heading);
+	direction: rtl;
+	line-height: 1;
+	padding-top: 0;
+	margin-top: 0;
+	padding-inline-start: 0.1em;
+}
+
+/* --- Animations --- */
+@keyframes fade-in-up {
+	from { opacity: 0; transform: translateY(12px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-down {
+	from { opacity: 0; transform: translateY(-8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes greeting-in {
+	from {
+		opacity: 0;
+		transform: scale(0.96) translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+.animate-fade-in-up {
+	animation: fade-in-up 0.4s ease-out both;
+}
+
+.animate-fade-in-down {
+	animation: fade-in-down 0.35s ease-out both;
+}
+
+.animate-fade-in {
+	animation: fade-in 0.3s ease-out both;
+}
+
+.animate-greeting-in {
+	animation: greeting-in 0.5s ease-out both;
+}

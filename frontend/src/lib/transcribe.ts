@@ -74,9 +74,19 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
 
 	log('Running Whisper inference (Dhivehi)...');
 	const tInfer = performance.now();
+	const progressInterval = setInterval(() => {
+		const elapsed = ((performance.now() - tInfer) / 1000).toFixed(0);
+		log(`Inference running... ${elapsed}s elapsed`);
+	}, 5000);
 	const result = await whisperPipeline(float32Array, {
 		task: 'transcribe',
+		callback_function: (output: any) => {
+			if (output?.type === 'generation') {
+				log(`Generating tokens... ${output.output?.length || '?'} tokens so far`);
+			}
+		},
 	});
+	clearInterval(progressInterval);
 	log(`Inference done (${(performance.now() - tInfer).toFixed(0)}ms)`);
 
 	audioContext.close();

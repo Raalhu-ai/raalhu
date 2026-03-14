@@ -28,11 +28,10 @@
 	import { Plus, ArrowUp, Archive, X, FileText, Loader2, Sparkles, Paperclip, Camera, Globe, Feather, Check } from 'lucide-svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { modelDisplayName } from '$lib/modes';
-	// Voice/STT disabled — will be served from R2 later
-	// import { Mic, Square } from 'lucide-svelte';
-	// import { createVoiceRecorder, type VoiceState } from '$lib/voice';
-	// import { transcribeAudio } from '$lib/transcribe';
-	// import WaveformVisualizer from './WaveformVisualizer.svelte';
+	import { Mic, Square } from 'lucide-svelte';
+	import { createVoiceRecorder, type VoiceState } from '$lib/voice';
+	import { transcribeAudio } from '$lib/transcribe';
+	import WaveformVisualizer from './WaveformVisualizer.svelte';
 
 	let {
 		value = $bindable(''),
@@ -60,23 +59,19 @@
 	let textareaEl = $state<HTMLTextAreaElement | undefined>();
 	let fileInputEl = $state<HTMLInputElement | undefined>();
 
-	// --- Voice input (disabled — STT model moving to R2) ---
-	// let voiceState = $state<VoiceState>('idle');
-	// let recorder = createVoiceRecorder();
-	// let micPermissionDenied = $state(false);
-	// let typewriterTimer: ReturnType<typeof setTimeout> | null = null;
+	let voiceState = $state<VoiceState>('idle');
+	let recorder = createVoiceRecorder();
+	let micPermissionDenied = $state(false);
 
 	export function focus() {
 		textareaEl?.focus();
 	}
 
-	// Cleanup voice resources on destroy (disabled)
-	// $effect(() => {
-	// 	return () => {
-	// 		recorder.destroy();
-	// 		if (typewriterTimer) clearTimeout(typewriterTimer);
-	// 	};
-	// });
+	$effect(() => {
+		return () => {
+			recorder.destroy();
+		};
+	});
 
 	const styles: { id: StyleId; label: string }[] = [
 		{ id: 'normal', label: 'ނޯމަލް' },
@@ -199,11 +194,33 @@
 		}
 	}
 
-	// --- Voice recording (disabled — STT model moving to R2) ---
-	// async function startRecording() { ... }
-	// async function stopRecording() { ... }
-	// function cancelRecording() { ... }
-	// function typewriterAppend(text: string) { ... }
+	async function startRecording() {
+		try {
+			await recorder.start();
+			voiceState = 'recording';
+			micPermissionDenied = false;
+		} catch (e: any) {
+			if (e.name === 'NotAllowedError') micPermissionDenied = true;
+			console.error('[Voice] start failed:', e);
+		}
+	}
+
+	async function stopRecording() {
+		voiceState = 'transcribing';
+		try {
+			const blob = await recorder.stop();
+			const text = await transcribeAudio(blob);
+			if (text) value = value ? value + ' ' + text : text;
+		} catch (e) {
+			console.error('[Voice] transcription failed:', e);
+		}
+		voiceState = 'idle';
+	}
+
+	function cancelRecording() {
+		recorder.cancel();
+		voiceState = 'idle';
+	}
 
 	// --- Send ---
 	function handleSend() {
@@ -461,6 +478,49 @@
 								{styles.find(s => s.id === activeStyle)?.label}
 							</span>
 						{/if}
+					</div>
+				{/if}
+
+				<!-- Mic button -->
+				{#if voiceState === 'idle'}
+					<button
+						onclick={startRecording}
+						type="button"
+						disabled={disabled}
+						class="inline-flex items-center justify-center h-8 w-8 rounded-xl
+							text-muted-foreground hover:text-foreground hover:bg-accent
+							transition-colors duration-200 active:scale-95"
+						aria-label="އަޑު ރެކޯޑް ކުރޭ"
+					>
+						<Mic class="w-4 h-4" />
+					</button>
+				{:else if voiceState === 'recording'}
+					<div class="flex items-center gap-1">
+						<WaveformVisualizer getFrequencyData={() => recorder.getFrequencyData()} />
+						<button
+							onclick={cancelRecording}
+							type="button"
+							class="inline-flex items-center justify-center h-8 w-8 rounded-xl
+								text-muted-foreground hover:text-foreground hover:bg-accent
+								transition-colors duration-200 active:scale-95"
+							aria-label="ކެންސަލް"
+						>
+							<X class="w-4 h-4" />
+						</button>
+						<button
+							onclick={stopRecording}
+							type="button"
+							class="inline-flex items-center justify-center h-8 w-8 rounded-xl
+								bg-red-500 text-white hover:bg-red-600
+								transition-colors duration-200 active:scale-95"
+							aria-label="ހުއްޓާ"
+						>
+							<Square class="w-3.5 h-3.5" />
+						</button>
+					</div>
+				{:else if voiceState === 'transcribing'}
+					<div class="inline-flex items-center justify-center h-8 w-8">
+						<Loader2 class="w-4 h-4 animate-spin text-muted-foreground" />
 					</div>
 				{/if}
 

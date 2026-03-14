@@ -1,8 +1,23 @@
 node_modules/
 
-# SvelteKit
+# SvelteKit frontend
 frontend/.svelte-kit/
 frontend/build/
+
+# Expo
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Electron
+apps/desktop/dist/
+apps/desktop/out/
 
 # Environment
 .env
@@ -36,3 +51,6 @@ frontend/static/models/
 
 # Quantization test workspace (temporary)
 tester/
+
+# Temp files
+tmpclaude-*

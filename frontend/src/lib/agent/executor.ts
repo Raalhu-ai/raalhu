@@ -188,6 +188,15 @@ export async function executeToolCall(
 			break;
 		}
 
+		case 'show_widget': {
+			const title = args.title as string;
+			const widget_code = args.widget_code as string;
+			const mode: 'html' | 'svg' = widget_code.trimStart().startsWith('<svg') ? 'svg' : 'html';
+			console.log(`[Executor] Show widget: title="${title}" mode=${mode} code=${widget_code.length} chars`);
+			result = { response: { success: true, title, widget_code, mode } };
+			break;
+		}
+
 		case 'web_fetch': {
 			const prompt = args.prompt as string;
 			console.log(`[Executor] Web fetch: "${prompt.slice(0, 200)}"`);

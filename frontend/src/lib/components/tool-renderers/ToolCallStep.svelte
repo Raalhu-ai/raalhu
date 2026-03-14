@@ -1,7 +1,7 @@
 <script lang="ts">
 	import {
 		Terminal, FilePen, Eye, FolderOpen, FileOutput, BookOpen, MessageCircleQuestion, Wrench,
-		Globe, GlobeLock, PenLine, CookingPot
+		Globe, GlobeLock, PenLine, CookingPot, BarChart3
 	} from 'lucide-svelte';
 	import type { Component } from 'svelte';
 	import StepRow from './StepRow.svelte';
@@ -46,6 +46,8 @@
 				return { icon: PenLine, displayName: 'މެސެޖް ލިޔުން' };
 			case 'recipe_display':
 				return { icon: CookingPot, displayName: 'ރެސިޕީ ދެއްކުން' };
+			case 'show_widget':
+				return { icon: BarChart3, displayName: desc || 'ވިޝުއަލައިޒް' };
 			case 'web_search':
 				return { icon: Globe, displayName: 'ވެބް ސާޗް' };
 			case 'web_fetch':

@@ -239,6 +239,25 @@ export const AGENT_TOOLS = [
 				}
 			},
 			{
+				name: 'show_widget',
+				description:
+					'Render an interactive visualization inline in chat. Use for: charts (Chart.js), diagrams (SVG/mermaid), mockups (HTML+CSS), interactive explainers (HTML+JS), and illustrative art (SVG). ALWAYS call read_skill with name "visualiser" before your first show_widget call in a conversation to load the design system, color palette, and rendering rules. Auto-detects mode: if code starts with <svg, SVG mode is used; otherwise HTML mode. A global sendPrompt(text) function is available in HTML mode to send messages back to chat.',
+				parameters: {
+					type: 'OBJECT',
+					properties: {
+						title: {
+							type: 'STRING',
+							description: 'Short snake_case identifier for the widget'
+						},
+						widget_code: {
+							type: 'STRING',
+							description: 'The HTML or SVG code to render. If it starts with <svg, SVG mode is used; otherwise HTML mode.'
+						}
+					},
+					required: ['title', 'widget_code']
+				}
+			},
+			{
 				name: 'web_fetch',
 				description:
 					'Fetch and process content from a URL. The prompt should contain the URL(s) and instructions for what to extract or summarize. Use this to read web pages, documentation, articles, or any online content.',

@@ -1,5 +1,5 @@
 import type { PyodideSandbox } from './sandbox';
-import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, RecipeData } from './types';
+import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, RecipeData, WidgetData } from './types';
 import { AGENT_TOOLS } from './tools';
 import { executeToolCall } from './executor';
 import { fetchWithRetry, TerminalQuotaError } from './retry';
@@ -256,6 +256,17 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 						};
 						console.log(`[AgentLoop] Recipe display: "${recipeData.title}"`);
 						yield { type: 'recipe-display', data: recipeData };
+					}
+
+					// Yield show-widget event for the UI
+					if (fc.name === 'show_widget' && response.success) {
+						const widgetData: WidgetData = {
+							title: response.title as string,
+							widget_code: response.widget_code as string,
+							mode: (response.mode as 'html' | 'svg') || 'html'
+						};
+						console.log(`[AgentLoop] Show widget: "${widgetData.title}" mode=${widgetData.mode}`);
+						yield { type: 'show-widget', data: widgetData };
 					}
 
 					responseParts.push({

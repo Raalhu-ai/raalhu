@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Theme (Dark mode — always dark) ---
+   Values are RGB triplets for Tailwind v3 opacity modifier support.
+   e.g. bg-primary/15 → rgb(125 159 227 / 0.15)
+*/
+:root {
+  --card: 44 45 47;
+  --ring: 125 159 227;
+  --input: 63 66 69;
+  --muted: 46 48 51;
+  --accent: 50 52 56;
+  --border: 54 56 57;
+  --popover: 44 45 47;
+  --primary: 125 159 227;
+  --background: 36 37 38;
+  --foreground: 232 234 237;
+  --destructive: 229 77 46;
+  --card-foreground: 232 234 237;
+  --muted-foreground: 156 163 175;
+  --accent-foreground: 232 234 237;
+  --popover-foreground: 232 234 237;
+  --primary-foreground: 10 21 48;
+  --secondary: 26 42 74;
+  --secondary-foreground: 125 159 227;
+  --destructive-foreground: 255 255 255;
+}
+
+/* Thaana text utility */
+.thaana {
+  font-family: "MV Typewriter", sans-serif;
+  direction: rtl;
+  line-height: 1.8;
+}
+
+.thaana-heading {
+  font-family: "Sangu Suruhee", "MV Typewriter", sans-serif;
+  direction: rtl;
+  line-height: 1;
+  padding-top: 0;
+  margin-top: 0;
+  padding-inline-start: 0.1em;
+}
+
+/* --- Animations --- */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out both;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.35s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out both;
+}
+
+/* --- Greeting animation --- */
+@keyframes greeting-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-greeting-in {
+  animation: greeting-in 0.5s ease-out both;
+}
+
+/* --- Form Input Polish --- */
+.input-field {
+  transition: all 0.2s;
+}

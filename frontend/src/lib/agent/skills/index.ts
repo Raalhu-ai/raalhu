@@ -9,7 +9,8 @@ export const SKILLS: SkillInfo[] = [
 	{ name: 'xlsx', description: 'Spreadsheet (.xlsx) creation, reading, styling, charts, formulas, data validation, conditional formatting' },
 	{ name: 'pptx', description: 'PowerPoint (.pptx) creation — presentations, slide decks, Thaana text, charts, tables, images, embedded fonts' },
 	{ name: 'text-processing', description: 'Text manipulation and Thaana handling' },
-	{ name: 'csv-data', description: 'CSV/data processing with pandas or csv module' }
+	{ name: 'csv-data', description: 'CSV/data processing with pandas or csv module' },
+	{ name: 'visualiser', description: 'Inline visualizations via show_widget — SVG diagrams, Chart.js charts, HTML interactive explainers, flowcharts, architecture diagrams, comparisons, mockups' }
 ];
 
 const skillModules: Record<string, () => Promise<string>> = {
@@ -18,7 +19,8 @@ const skillModules: Record<string, () => Promise<string>> = {
 	xlsx: () => import('./xlsx.md?raw').then((m) => m.default),
 	pptx: () => import('./pptx.md?raw').then((m) => m.default),
 	'text-processing': () => import('./text-processing.md?raw').then((m) => m.default),
-	'csv-data': () => import('./csv-data.md?raw').then((m) => m.default)
+	'csv-data': () => import('./csv-data.md?raw').then((m) => m.default),
+	'visualiser': () => import('./visualiser.md?raw').then((m) => m.default)
 };
 
 /**

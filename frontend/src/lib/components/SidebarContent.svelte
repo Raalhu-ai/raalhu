@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles } from 'lucide-svelte';
+	import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles, Settings } from 'lucide-svelte';
 	import type { QuotaModel, User } from '$lib/api';
 	import type { ChatSession, Project } from '$lib/db';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -13,6 +13,7 @@
 		onRefreshQuota,
 		user,
 		onLogout,
+		onSettings = () => {},
 		onNewChat,
 		sessions = [],
 		activeSessionId = null,
@@ -37,6 +38,7 @@
 		onRefreshQuota: () => void;
 		user: User | null;
 		onLogout: () => void;
+		onSettings?: () => void;
 		onNewChat: () => void;
 		sessions?: ChatSession[];
 		activeSessionId?: string | null;
@@ -358,6 +360,14 @@
 					<div class="text-[12px] text-foreground font-medium truncate">{user.name}</div>
 					<div class="text-[10px] text-muted-foreground truncate">{user.email}</div>
 				</div>
+				<button
+					onclick={onSettings}
+					class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent
+						transition-colors duration-150 shrink-0"
+					aria-label="ސެޓިންގްސް"
+				>
+					<Settings class="w-3.5 h-3.5" />
+				</button>
 				<button
 					onclick={onLogout}
 					class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent

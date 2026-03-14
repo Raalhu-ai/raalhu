@@ -60,6 +60,25 @@
 			gtag('config', 'G-DM4QWKNCSF');
 		</script>
 
+		<script>
+			(function() {
+				try {
+					var s = localStorage.getItem('mogger_settings');
+					if (s) {
+						var t = JSON.parse(s).theme;
+						if (t === 'light') {
+							document.documentElement.classList.remove('dark');
+							document.querySelector('meta[name="color-scheme"]').content = 'light';
+							document.querySelector('meta[name="theme-color"]').content = '#f7f8fa';
+						} else if (t === 'system' && !matchMedia('(prefers-color-scheme: dark)').matches) {
+							document.documentElement.classList.remove('dark');
+							document.querySelector('meta[name="color-scheme"]').content = 'light';
+							document.querySelector('meta[name="theme-color"]').content = '#f7f8fa';
+						}
+					}
+				} catch(e) {}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-prerender="false">

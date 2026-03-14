@@ -196,7 +196,7 @@ body {
 
 /* Markdown inside chat bubbles */
 .prose-chat {
-	font-size: 18.5px;
+	font-size: var(--chat-font-size, 18.5px);
 	line-height: 45px;
 	overflow-wrap: anywhere;
 	word-break: break-word;

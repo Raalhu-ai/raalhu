@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@raalhu/ui": ["../../packages/ui/src"],
+      "@raalhu/ui/*": ["../../packages/ui/src/*"],
+      "@raalhu/shared": ["../../packages/shared/src"],
+      "@raalhu/shared/*": ["../../packages/shared/src/*"],
+      "react-native": ["react-native-web"]
+    }
+  },
+  "include": ["src"]
+}

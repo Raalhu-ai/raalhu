@@ -12,7 +12,9 @@
 	import ArtifactsPage from '$lib/components/ArtifactsPage.svelte';
 	import ArtifactCreatePage from '$lib/components/ArtifactCreatePage.svelte';
 	import InspirationDetailPage from '$lib/components/InspirationDetailPage.svelte';
+	import SettingsPage from '$lib/components/SettingsPage.svelte';
 	import { getInspirationCard } from '$lib/inspiration-cards';
+	import { applyTheme, applyFontSize } from '$lib/settings';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import type { ChatSession, Project } from '$lib/db';
 	import {
@@ -30,7 +32,7 @@
 	import type { ProjectContext } from '$lib/project-context';
 
 	// --- App state ---
-	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project'>('loading');
+	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
 	let user = $state<User | null>(null);
 	let selectedModel = $state('gemini-3-flash-preview');
 	let quotas = $state<QuotaModel[]>([]);
@@ -98,6 +100,8 @@
 
 	onMount(async () => {
 		sidebarCollapsed = localStorage.getItem('mogger_sidebar') === 'collapsed';
+		applyTheme();
+		applyFontSize();
 
 		refreshSessions();
 		refreshProjects();
@@ -191,6 +195,12 @@
 		await logout();
 		user = null;
 		appState = 'login';
+	}
+
+	// --- Settings ---
+	function openSettings() {
+		appState = 'settings';
+		sidebarOpen = false;
 	}
 
 	// --- Projects ---
@@ -392,7 +402,7 @@
 		</div>
 	</div>
 
-{:else if appState === 'dashboard' || appState === 'chat' || appState === 'project'}
+{:else if appState === 'dashboard' || appState === 'chat' || appState === 'project' || appState === 'settings'}
 	<div class="flex h-dvh">
 		<!-- Desktop sidebar -->
 		<aside class="hidden lg:flex lg:flex-col border-e border-border bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-out {sidebarCollapsed ? 'w-14' : 'w-[260px]'}">
@@ -427,6 +437,7 @@
 					onRefreshQuota={loadQuota}
 					{user}
 					onLogout={handleLogout}
+					onSettings={openSettings}
 					onNewChat={() => { showingProjects = false; showingArtifacts = false; goBackToDashboard(); }}
 					{sessions}
 					{activeSessionId}
@@ -511,6 +522,13 @@
 					{models}
 					onRefreshProjects={refreshProjects}
 				/>
+			{:else if appState === 'settings'}
+				<SettingsPage
+					{user}
+					onLogout={handleLogout}
+					onBack={goBackToDashboard}
+					onSessionsCleared={refreshSessions}
+				/>
 			{:else if appState === 'chat' && activeSessionId}
 				{#key activeSessionId}
 				<div class="flex-1 overflow-hidden h-full">
@@ -546,6 +564,7 @@
 					onRefreshQuota={loadQuota}
 					{user}
 					onLogout={handleLogout}
+					onSettings={() => { sidebarOpen = false; openSettings(); }}
 					onNewChat={() => { showingProjects = false; showingArtifacts = false; sidebarOpen = false; goBackToDashboard(); }}
 					{sessions}
 					{activeSessionId}

@@ -19,7 +19,8 @@
 	import { getPromptModule } from '$lib/prompts';
 	import MessageCompose from './MessageCompose.svelte';
 	import RecipeDisplay from './RecipeDisplay.svelte';
-	import type { AgentMessage, AgentStep, Artifact, GeminiContent, UserInputQuestion, MessageComposeData, RecipeData } from '$lib/agent/types';
+	import WidgetDisplay from './WidgetDisplay.svelte';
+	import type { AgentMessage, AgentStep, Artifact, GeminiContent, UserInputQuestion, MessageComposeData, RecipeData, WidgetData } from '$lib/agent/types';
 	import {
 		fetchAITitle,
 		updateSessionTitle
@@ -595,6 +596,11 @@
 						updateUI();
 						break;
 
+					case 'show-widget':
+						steps.push({ kind: 'show-widget', data: event.data });
+						updateUI();
+						break;
+
 					case 'error':
 						assistantMsg.content =
 							(assistantMsg.content ? assistantMsg.content + '\n\n' : '') +
@@ -880,6 +886,17 @@
 										{#each (message.steps || []).filter(s => s.kind === 'recipe-display') as step}
 											{#if step.kind === 'recipe-display'}
 												<RecipeDisplay data={step.data} />
+											{/if}
+										{/each}
+									</div>
+								{/if}
+
+								<!-- Widget display(s) -->
+								{#if (message.steps || []).some(s => s.kind === 'show-widget')}
+									<div class="flex flex-col gap-2 mt-3">
+										{#each (message.steps || []).filter(s => s.kind === 'show-widget') as step}
+											{#if step.kind === 'show-widget'}
+												<WidgetDisplay data={step.data} onSendPrompt={(text) => handleSend({ message: text })} />
 											{/if}
 										{/each}
 									</div>

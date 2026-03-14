@@ -42,8 +42,10 @@ const app = new Hono<Env>();
 app.use(
 	'*',
 	cors({
-		origin: (origin) => origin || '*',
-		credentials: true
+		origin: (origin) => origin || 'http://localhost:5173',
+		credentials: true,
+		allowHeaders: ['Content-Type', 'X-Session'],
+		exposeHeaders: ['Set-Cookie']
 	})
 );
 
@@ -248,7 +250,7 @@ app.post('/auth/exchange', async (c) => {
 	await saveSession(sessionId, sessionData, c.env.SESSIONS);
 
 	c.header('Set-Cookie', setSessionCookie(sessionId));
-	return c.json({ ok: true });
+	return c.json({ ok: true, sessionId });
 });
 
 app.get('/auth/me', async (c) => {

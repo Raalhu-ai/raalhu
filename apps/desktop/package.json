@@ -1,0 +1,67 @@
+{
+  "name": "@raalhu/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main/main.js",
+  "build": {
+    "appId": "com.raalhu.desktop",
+    "productName": "ރާޅު",
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ]
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "electron-builder",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^2.0.151",
+    "@raalhu/shared": "workspace:*",
+    "@raalhu/ui": "workspace:*",
+    "ai": "^5.0.149",
+    "docx-preview": "^0.3.7",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.577.0",
+    "marked": "^17.0.4",
+    "nativewind": "^4.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-native-web": "~0.21.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4",
+    "autoprefixer": "^10.4.27",
+    "electron": "^33.0.0",
+    "electron-builder": "^25",
+    "electron-vite": "^2",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5",
+    "vite": "^5"
+  }
+}

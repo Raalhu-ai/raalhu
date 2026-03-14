@@ -1,0 +1,30 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@raalhu/ui": [
+        "../../packages/ui/src"
+      ],
+      "@raalhu/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@raalhu/shared": [
+        "../../packages/shared/src"
+      ],
+      "@raalhu/shared/*": [
+        "../../packages/shared/src/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
+  ]
+}

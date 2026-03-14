@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@raalhu/ui": ["../ui/src"],
+      "@raalhu/ui/*": ["../ui/src/*"],
+      "@raalhu/shared": ["../shared/src"],
+      "@raalhu/shared/*": ["../shared/src/*"]
+    }
+  }
+}

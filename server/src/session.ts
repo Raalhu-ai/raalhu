@@ -17,8 +17,10 @@ export interface SessionData {
 const COOKIE_NAME = 'session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 
-/** Read session ID from Cookie header. */
+/** Read session ID from Cookie header or X-Session header (for desktop/mobile). */
 export function getSessionId(request: Request): string | null {
+	const headerSession = request.headers.get('X-Session');
+	if (headerSession) return headerSession;
 	const cookie = request.headers.get('Cookie') ?? '';
 	const match = cookie.match(/session=([^;]+)/);
 	return match ? match[1] : null;
