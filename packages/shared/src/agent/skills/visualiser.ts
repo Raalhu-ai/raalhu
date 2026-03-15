@@ -121,9 +121,13 @@ Don't use for: filtering, sorting, toggling — handle in local JS.
 var tip=document.getElementById('tip');
 function showTip(e,el){
   tip.textContent=el.dataset.tip;tip.style.opacity='1';
-  var r=el.querySelector('rect').getBoundingClientRect(),p=el.closest('div').getBoundingClientRect();
-  tip.style.left=(r.left-p.left+r.width/2-tip.offsetWidth/2)+'px';
-  tip.style.top=(r.top-p.top-tip.offsetHeight-8)+'px';
+  var r=el.querySelector('rect,circle,ellipse').getBoundingClientRect(),p=el.closest('div').getBoundingClientRect();
+  var left=r.left-p.left+r.width/2-tip.offsetWidth/2;
+  var top=r.top-p.top-tip.offsetHeight-8;
+  if(top<0) top=r.bottom-p.top+8;
+  if(left<0) left=4;
+  if(left+tip.offsetWidth>p.width) left=p.width-tip.offsetWidth-4;
+  tip.style.left=left+'px';tip.style.top=top+'px';
 }
 function hideTip(){tip.style.opacity='0'}
 </script>
