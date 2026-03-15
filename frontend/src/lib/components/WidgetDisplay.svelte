@@ -121,7 +121,7 @@ button:active { background: var(--b); transform: scale(0.98); }`;
 <style>
 ${FONT_FACES}
 ${WIDGET_CSS}
-html, body { margin: 0; padding: 16px; background: transparent; display: flex; align-items: center; justify-content: center; min-height: 100%; font-family: var(--font); }
+html, body { margin: 0; padding: 16px; background: transparent !important; display: flex; align-items: center; justify-content: center; min-height: 100%; font-family: var(--font); }
 svg { max-width: 100%; height: auto; }
 </style></head>
 <body>${MARKER_SVG}${data.widget_code}
@@ -130,10 +130,16 @@ svg { max-width: 100%; height: auto; }
 		}
 
 		const trimmed = data.widget_code.trimStart().toLowerCase();
+		let content = data.widget_code;
+
+		// Full document — extract body content, preserve head styles, discard agent's wrapper
 		if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
-			return data.widget_code
-				.replace(/<head([^>]*)>/i, `<head$1><style>${FONT_FACES}\n${WIDGET_CSS}</style>`)
-				.replace(/<body([^>]*)>/i, `<body$1>${MARKER_SVG}`);
+			const headMatch = data.widget_code.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+			const agentStyles = headMatch
+				? [...headMatch[1].matchAll(/<style[^>]*>[\s\S]*?<\/style>/gi)].map(m => m[0]).join('\n')
+				: '';
+			const bodyMatch = data.widget_code.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+			content = (agentStyles ? agentStyles : '') + (bodyMatch ? bodyMatch[1] : data.widget_code);
 		}
 
 		return `<!DOCTYPE html>
@@ -141,9 +147,9 @@ svg { max-width: 100%; height: auto; }
 <style>
 ${FONT_FACES}
 ${WIDGET_CSS}
-html, body { margin: 0; padding: 16px; background: transparent; color: var(--p); font-family: var(--font); }
+html, body { margin: 0; padding: 16px; background: transparent !important; color: var(--p) !important; font-family: var(--font); }
 </style></head>
-<body>${MARKER_SVG}${data.widget_code}
+<body>${MARKER_SVG}${content}
 <script>${SEND_PROMPT_SCRIPT}${RESIZE_SCRIPT}<\/script>
 </body></html>`;
 	}

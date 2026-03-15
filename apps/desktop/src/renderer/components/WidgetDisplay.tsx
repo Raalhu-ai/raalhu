@@ -86,20 +86,26 @@ svg { max-width: 100%; height: auto; }
 </body></html>`;
 		} else {
 			const trimmed = data.widget_code.trimStart().toLowerCase();
+			let content = data.widget_code;
+
+			// Full document — extract body content, preserve head styles, discard agent's wrapper
 			if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
-				html = data.widget_code
-					.replace(/<head([^>]*)>/i, `<head$1><style>${WIDGET_CSS}</style>`)
-					.replace(/<body([^>]*)>/i, `<body$1>${MARKER_SVG}`);
-			} else {
-				html = `<!DOCTYPE html>
+				const headMatch = data.widget_code.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+				const agentStyles = headMatch
+					? [...headMatch[1].matchAll(/<style[^>]*>[\s\S]*?<\/style>/gi)].map((m: RegExpMatchArray) => m[0]).join('\n')
+					: '';
+				const bodyMatch = data.widget_code.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+				content = (agentStyles ? agentStyles : '') + (bodyMatch ? bodyMatch[1] : data.widget_code);
+			}
+
+			html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>${WIDGET_CSS}
-html, body { margin: 0; padding: 16px; background: var(--bg); color: var(--p); font-family: var(--font); }
+html, body { margin: 0; padding: 16px; background: var(--bg) !important; color: var(--p) !important; font-family: var(--font); }
 </style></head>
-<body>${MARKER_SVG}${data.widget_code}
+<body>${MARKER_SVG}${content}
 <script>${SEND_PROMPT_SCRIPT}${RESIZE_SCRIPT}</script>
 </body></html>`;
-			}
 		}
 
 		const blob = new Blob([html], { type: 'text/html' });
