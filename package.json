@@ -1,6 +1,7 @@
 {
   "name": "mogger",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:frontend\"",
     "dev:server": "pnpm --filter mogger-server dev",

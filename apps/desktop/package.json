@@ -2,6 +2,7 @@
   "name": "@raalhu/desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "main": "dist/main/main.js",
   "build": {
     "appId": "com.raalhu.desktop",

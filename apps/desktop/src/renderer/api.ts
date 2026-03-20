@@ -1,7 +1,8 @@
 import { createApiClient } from "@raalhu/shared/src/api-core";
 import type { SessionStorage } from "@raalhu/shared/src/api-core";
 
-export const API_BASE = "http://127.0.0.1:3000";
+export const API_BASE =
+  (window as any).__RAALHU_API_BASE__ || "http://127.0.0.1:3000";
 const SESSION_KEY = "raalhu_session";
 
 const localStorageAdapter: SessionStorage = {

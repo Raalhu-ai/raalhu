@@ -2,8 +2,8 @@ import * as SecureStore from "expo-secure-store";
 import { createApiClient } from "@raalhu/shared/src/api-core";
 import type { SessionStorage } from "@raalhu/shared/src/api-core";
 
-// TODO: use environment variable or config for production
-export const API_BASE = "http://localhost:3000";
+export const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE || "http://localhost:3000";
 const SESSION_KEY = "raalhu_session";
 
 const expoSecureStoreAdapter: SessionStorage = {

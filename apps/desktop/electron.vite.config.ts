@@ -26,6 +26,8 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src/renderer"),
+        "@raalhu/shared/src/agent": path.resolve(__dirname, "../../packages/shared/src/agent"),
+        "@raalhu/shared/src/api-core": path.resolve(__dirname, "../../packages/shared/src/api-core"),
         "@raalhu/shared": path.resolve(__dirname, "../../packages/shared/src"),
         "@raalhu/ui": path.resolve(__dirname, "../../packages/ui/src"),
         "react-native": path.resolve(__dirname, "node_modules/react-native-web"),

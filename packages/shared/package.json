@@ -2,8 +2,14 @@
   "name": "@raalhu/shared",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/agent": "./src/agent/index.ts",
+    "./src/api-core": "./src/api-core.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

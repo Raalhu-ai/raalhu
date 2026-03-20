@@ -2,13 +2,15 @@ name = "mogger-api"
 main = "src/worker.ts"
 compatibility_date = "2024-12-01"
 
+# Create your own KV namespaces: wrangler kv:namespace create AUTH_SESSIONS && wrangler kv:namespace create SESSIONS
+# Then set KV_AUTH_SESSIONS_ID and KV_SESSIONS_ID in your .env or shell environment
 [[kv_namespaces]]
 binding = "AUTH_SESSIONS"
-id = "50aed465261241dbb185983e86ea9d98"
+id = "${KV_AUTH_SESSIONS_ID}"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "e269c11a1e4b454aa6fe6e0c81eba26f"
+id = "${KV_SESSIONS_ID}"
 
 [observability]
 enabled = false

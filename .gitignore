@@ -52,5 +52,8 @@ frontend/static/models/
 # Quantization test workspace (temporary)
 tester/
 
+# Archive (not published)
+_archive/
+
 # Temp files
 tmpclaude-*
