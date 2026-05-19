@@ -80,22 +80,24 @@
 	</div>
 
 	<!-- Starter chips -->
-	<div class="flex flex-wrap justify-center gap-2 max-w-2xl animate-fade-in-up" style="animation-delay: 300ms">
-		{#each STARTERS.filter(s => s.starterText) as starter}
-			{@const Icon = iconMap[starter.icon]}
-			<button
-				onclick={() => { inputValue = starter.starterText; }}
-				class="thaana inline-flex items-center gap-1.5 px-3.5 py-2 text-[13px] leading-none
-					bg-muted border border-border rounded-full
-					hover:border-primary/40 hover:bg-accent
-					transition-all duration-150 cursor-pointer
-					focus:outline-none focus:ring-2 focus:ring-ring/50"
-			>
-				{#if Icon}
-					<Icon class="w-3.5 h-3.5 text-primary/80 shrink-0" />
-				{/if}
-				<span class="translate-y-px">{starter.labelDv}</span>
-			</button>
-		{/each}
-	</div>
+	{#if !inputValue.trim()}
+		<div class="flex flex-wrap justify-center gap-2 max-w-2xl animate-fade-in-up" style="animation-delay: 300ms">
+			{#each STARTERS.filter(s => s.starterText) as starter}
+				{@const Icon = iconMap[starter.icon]}
+				<button
+					onclick={() => { inputValue = starter.starterText; }}
+					class="thaana inline-flex items-center gap-1.5 px-3.5 py-2 text-[13px] leading-none
+						bg-muted border border-border rounded-full
+						hover:border-primary/40 hover:bg-accent
+						transition-all duration-150 cursor-pointer
+						focus:outline-none focus:ring-2 focus:ring-ring/50"
+				>
+					{#if Icon}
+						<Icon class="w-3.5 h-3.5 text-primary/80 shrink-0" />
+					{/if}
+					<span class="translate-y-px">{starter.labelDv}</span>
+				</button>
+			{/each}
+		</div>
+	{/if}
 </div>

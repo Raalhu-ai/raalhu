@@ -6,7 +6,7 @@
 		Pencil, Trash2, X, ArrowLeft
 	} from 'lucide-svelte';
 	import ChatInput from './ChatInput.svelte';
-	import type { ChatInputSendData } from './ChatInput.svelte';
+	import type { ChatInputSendData, AttachedFile } from './ChatInput.svelte';
 	import ArtifactPreview from './ArtifactPreview.svelte';
 	import * as Drawer from '$lib/components/ui/drawer';
 	import ToolCallStep from './tool-renderers/ToolCallStep.svelte';
@@ -416,11 +416,27 @@
 		});
 	});
 
+	async function fileToInlineData(f: AttachedFile): Promise<{ inlineData: { mimeType: string; data: string } }> {
+		const buf = await f.file.arrayBuffer();
+		const bytes = new Uint8Array(buf);
+		let binary = '';
+		for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+		return {
+			inlineData: {
+				mimeType: f.file.type || 'application/octet-stream',
+				data: btoa(binary)
+			}
+		};
+	}
+
 	async function handleSend(data: ChatInputSendData) {
 		const text = data.message.trim();
-		if (!text || running || quotaExhausted || !systemPromptReady) return;
+		const imageFiles = data.files.filter(f => f.type.startsWith('image/'));
+		if ((!text && imageFiles.length === 0) || running || quotaExhausted || !systemPromptReady) return;
 
-		console.log(`[AgentChat] ▶ User message: "${text.slice(0, 100)}${text.length > 100 ? '...' : ''}"`);
+		console.log(`[AgentChat] ▶ User message: "${text.slice(0, 100)}${text.length > 100 ? '...' : ''}" (${imageFiles.length} image(s))`);
+
+		const imageParts = await Promise.all(imageFiles.map(fileToInlineData));
 
 		const userMsg: AgentMessage = {
 			id: crypto.randomUUID(),
@@ -452,7 +468,7 @@
 			sandboxStep = '';
 		}
 
-		contents = buildContents(contents, text);
+		contents = buildContents(contents, text, imageParts);
 		running = true;
 		sandboxLoading = false;
 		startVerbCycle();
