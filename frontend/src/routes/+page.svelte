@@ -44,6 +44,7 @@
 	let sidebarCollapsed = $state(false);
 	let showingProjects = $state(false);
 	let showingArtifacts = $state(false);
+	let incognitoActive = $state(false);
 
 	// --- Agent state ---
 	let agentInitialMessages = $state<AgentMessage[]>([]);
@@ -245,6 +246,15 @@
 		agentInitialMessages = [];
 		pendingUserMessage = text;
 
+		// Incognito mode: skip project context and skip session persistence entirely
+		if (incognitoActive) {
+			activeProjectId = null;
+			activeProject = null;
+			activeProjectContext = undefined;
+			appState = 'chat';
+			return;
+		}
+
 		// Build project context if chat is started from a project
 		if (activeProjectId) {
 			activeProjectContext = await buildProjectContext(activeProjectId);
@@ -264,6 +274,11 @@
 
 		appState = 'chat';
 		history.replaceState(history.state, '', `/chat/${sessionId}`);
+	}
+
+	function exitIncognito() {
+		incognitoActive = false;
+		resetToDashboard();
 	}
 
 	async function startChatInProject(text: string) {
@@ -404,8 +419,8 @@
 
 {:else if appState === 'dashboard' || appState === 'chat' || appState === 'project' || appState === 'settings'}
 	<div class="flex h-dvh">
-		<!-- Desktop sidebar -->
-		<aside class="hidden lg:flex lg:flex-col border-e border-border bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-out {sidebarCollapsed ? 'w-14' : 'w-[260px]'}">
+		<!-- Desktop sidebar (hidden in incognito) -->
+		<aside class="{incognitoActive ? 'hidden' : 'hidden lg:flex lg:flex-col'} border-e border-border bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-out {sidebarCollapsed ? 'w-14' : 'w-[260px]'}">
 			{#if sidebarCollapsed}
 				<div class="flex flex-col items-center py-4 gap-1 h-full">
 					<button
@@ -458,16 +473,67 @@
 		</aside>
 
 		<!-- Main content -->
-		<div class="flex flex-1 flex-col overflow-hidden">
-			<!-- Mobile hamburger -->
+		<div class="flex flex-1 flex-col overflow-hidden relative {incognitoActive ? 'pt-[54px] px-2 pb-2' : ''}">
+			<!-- Raalhu icon (normal mode only, desktop only) -->
+			{#if !incognitoActive}
 			<button
-				onclick={() => (sidebarOpen = !sidebarOpen)}
-				class="lg:hidden fixed top-3 start-3 z-40 p-2 bg-card/80 backdrop-blur-md border border-border rounded-lg
-					text-muted-foreground hover:text-foreground hover:bg-accent
-					transition-all duration-150 shadow-sm"
+				class="hidden lg:block absolute top-3 left-3 z-30 p-1.5 rounded-lg group/logo transition-opacity duration-200 opacity-60 hover:opacity-90"
+				onclick={() => (incognitoActive = true)}
 			>
-				<Menu class="w-5 h-5" />
+				<div class="relative">
+					<span dir="rtl" class="thaana pointer-events-none absolute top-1/2 -translate-y-1/2 left-full ml-2 px-2 py-1 text-xs text-foreground bg-card border border-border rounded-md
+						opacity-0 group-hover/logo:opacity-100 transition-opacity duration-150 whitespace-nowrap shadow-sm">
+						ސިއްރު
+					</span>
+					<svg width="40" height="40" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+						<g transform="translate(7, 11.5)">
+							<defs>
+								<clipPath id="page-logo-clip">
+									<rect x="0" y="0" width="30" height="21" />
+								</clipPath>
+							</defs>
+							<g clip-path="url(#page-logo-clip)">
+								<path
+									d="M-13.5,5.4 Q-8.1,1.2 -2.7,5.4 Q2.7,9.6 8.1,5.4 Q13.5,1.2 19.2,5.4 Q24.6,9.6 30,5.4 Q35.4,1.2 40.8,5.4"
+									fill="none"
+									stroke="white"
+									stroke-width="2.75"
+									stroke-linecap="round"
+									opacity="0.85"
+								/>
+								<path
+									d="M-13.5,11.4 Q-8.1,7.2 -2.7,11.4 Q2.7,15.6 8.1,11.4 Q13.5,7.2 19.2,11.4 Q24.6,15.6 30,11.4 Q35.4,7.2 40.8,11.4"
+									fill="none"
+									stroke="white"
+									stroke-width="2.75"
+									stroke-linecap="round"
+									opacity="0.55"
+								/>
+								<path
+									d="M-13.5,17.4 Q-8.1,13.2 -2.7,17.4 Q2.7,21.6 8.1,17.4 Q13.5,13.2 19.2,17.4 Q24.6,21.6 30,17.4 Q35.4,13.2 40.8,17.4"
+									fill="none"
+									stroke="white"
+									stroke-width="2.75"
+									stroke-linecap="round"
+									opacity="0.3"
+								/>
+							</g>
+						</g>
+					</svg>
+				</div>
 			</button>
+			{/if}
+			<!-- Mobile hamburger (hidden in incognito) -->
+			{#if !incognitoActive}
+				<button
+					onclick={() => (sidebarOpen = !sidebarOpen)}
+					class="lg:hidden fixed top-3 start-3 z-40 p-2 bg-card/80 backdrop-blur-md border border-border rounded-lg
+						text-muted-foreground hover:text-foreground hover:bg-accent
+						transition-all duration-150 shadow-sm"
+				>
+					<Menu class="w-5 h-5" />
+				</button>
+			{/if}
 
 			<!-- Quota warning banner -->
 			{#if quotaExhausted}
@@ -475,6 +541,8 @@
 					<span class="thaana">ކޯޓާ %5 އަށް ވުރެ ދަށް. މެސެޖް ފޮނުވޭކަށް ނެތް.</span>
 				</div>
 			{/if}
+
+			<div class="contents">
 
 			{#if appState === 'dashboard' && showingArtifacts && selectedInspirationId}
 				{@const card = getInspirationCard(selectedInspirationId)}
@@ -511,6 +579,7 @@
 					bind:selectedModel
 					{models}
 					{activeProject}
+					incognito={incognitoActive}
 				/>
 			{:else if appState === 'project' && activeProjectId}
 				<ProjectView
@@ -545,11 +614,49 @@
 						onDelete={() => activeSessionId && handleArchive(activeSessionId)}
 						onRefreshSessions={refreshSessions}
 						onArtifactOpen={() => { sidebarOpen = false; sidebarCollapsed = true; }}
+						incognito={incognitoActive}
+						onExitIncognito={exitIncognito}
 					/>
 				</div>
 				{/key}
 			{/if}
+
+			</div><!-- /incognito card wrapper -->
 		</div>
+		{#if incognitoActive}
+			<!-- Fixed card outline overlay (creates dark surround + rounded card illusion) -->
+			<div class="pointer-events-none fixed inset-[50px_8px_8px_8px] rounded-2xl z-[25]"
+				style="box-shadow: 0 0 0 100vmax rgb(0 0 0 / 75%), inset 0 0 0 1px rgb(255 255 255 / 15%);"></div>
+			<!-- Fixed incognito top bar -->
+			<div class="fixed left-0 right-0 z-[26] flex items-center justify-between py-2 px-5 text-white" style="top: 10px;">
+				<div class="flex items-center gap-2.5">
+					<svg width="28" height="28" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+						<g transform="translate(7, 11.5)">
+							<defs>
+								<clipPath id="topbar-logo-clip">
+									<rect x="0" y="0" width="30" height="21" />
+								</clipPath>
+							</defs>
+							<g clip-path="url(#topbar-logo-clip)">
+								<path d="M-13.5,5.4 Q-8.1,1.2 -2.7,5.4 Q2.7,9.6 8.1,5.4 Q13.5,1.2 19.2,5.4 Q24.6,9.6 30,5.4 Q35.4,1.2 40.8,5.4" fill="none" stroke="white" stroke-width="2.75" stroke-linecap="round" opacity="0.85" />
+								<path d="M-13.5,11.4 Q-8.1,7.2 -2.7,11.4 Q2.7,15.6 8.1,11.4 Q13.5,7.2 19.2,11.4 Q24.6,15.6 30,11.4 Q35.4,7.2 40.8,11.4" fill="none" stroke="white" stroke-width="2.75" stroke-linecap="round" opacity="0.55" />
+								<path d="M-13.5,17.4 Q-8.1,13.2 -2.7,17.4 Q2.7,21.6 8.1,17.4 Q13.5,13.2 19.2,17.4 Q24.6,21.6 30,17.4 Q35.4,13.2 40.8,17.4" fill="none" stroke="white" stroke-width="2.75" stroke-linecap="round" opacity="0.3" />
+							</g>
+						</g>
+					</svg>
+					<span class="thaana text-sm select-none">ސިއްރު ޗެޓް</span>
+				</div>
+				<button
+					onclick={exitIncognito}
+					class="flex items-center justify-center w-8 h-8 rounded-md text-white hover:bg-white/10 transition-colors duration-150"
+					title="ނިންމާ"
+				>
+					<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+						<path d="M15.147 4.146a.5.5 0 0 1 .707.707L10.707 10l5.147 5.147a.5.5 0 0 1-.63.771l-.078-.064L10 10.707l-5.146 5.147a.5.5 0 0 1-.708-.707L9.293 10 4.146 4.853a.5.5 0 0 1 .708-.707L10 9.293z"/>
+					</svg>
+				</button>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Mobile sidebar drawer -->

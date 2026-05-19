@@ -2,15 +2,17 @@ name = "mogger-api"
 main = "src/worker.ts"
 compatibility_date = "2024-12-01"
 
-# Create your own KV namespaces: wrangler kv:namespace create AUTH_SESSIONS && wrangler kv:namespace create SESSIONS
-# Then set KV_AUTH_SESSIONS_ID and KV_SESSIONS_ID in your .env or shell environment
+# KV namespace IDs — create your own with:
+#   cd server && bunx wrangler kv namespace create AUTH_SESSIONS
+#   cd server && bunx wrangler kv namespace create SESSIONS
+# Then paste the returned IDs below.
 [[kv_namespaces]]
 binding = "AUTH_SESSIONS"
-id = "50aed465261241dbb185983e86ea9d98"
+id = "YOUR_AUTH_SESSIONS_KV_ID"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "e269c11a1e4b454aa6fe6e0c81eba26f"
+id = "YOUR_SESSIONS_KV_ID"
 
 [observability]
 enabled = false
@@ -27,6 +29,6 @@ enabled = false
 persist = true
 head_sampling_rate = 1
 
-# Secrets (set via `wrangler secret put`):
-#   OAUTH_CLIENT_ID     — Google OAuth client ID (Gemini CLI's installed-app client)
+# Secrets (set via `bunx wrangler secret put` for production, or .dev.vars for local dev):
+#   OAUTH_CLIENT_ID     — Google OAuth client ID
 #   OAUTH_CLIENT_SECRET — Google OAuth client secret

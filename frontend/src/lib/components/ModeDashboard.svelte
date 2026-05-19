@@ -12,13 +12,15 @@
 		onSendMessage,
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
-		activeProject = null
+		activeProject = null,
+		incognito = false
 	}: {
 		userName: string;
 		onSendMessage: (text: string) => void;
 		selectedModel?: string;
 		models?: string[];
 		activeProject?: Project | null;
+		incognito?: boolean;
 	} = $props();
 
 	const iconMap: Record<string, typeof FileText> = {
@@ -60,12 +62,18 @@
 	<div class="animate-greeting-in text-center mb-10 max-w-2xl">
 		<h1 class="thaana-heading text-7xl sm:text-8xl font-normal mb-3 leading-none">
 			<span class="bg-gradient-to-l from-primary via-primary/80 to-foreground bg-clip-text text-transparent">
-				{greeting.heading}{#if firstName}، {firstName}{/if}
+				{#if incognito}
+					ހެލޯ، ކޮންމެ މީހެއް
+				{:else}
+					{greeting.heading}{#if firstName}، {firstName}{/if}
+				{/if}
 			</span>
 		</h1>
-		<p class="thaana text-muted-foreground text-base animate-fade-in" style="animation-delay: 200ms">
-			{greeting.subtitle}
-		</p>
+		{#if !incognito}
+			<p class="thaana text-muted-foreground text-base animate-fade-in" style="animation-delay: 200ms">
+				{greeting.subtitle}
+			</p>
+		{/if}
 	</div>
 
 	<!-- Centered input -->
@@ -77,9 +85,15 @@
 			onSend={handleSend}
 			autofocus={true}
 		/>
+		{#if incognito}
+			<p class="thaana text-muted-foreground/80 text-xs text-center mt-3 max-w-xl mx-auto leading-relaxed">
+				ސިއްރު ޗެޓްތައް ރައްކާ ނުކުރެވޭ، ހިސްޓްރީއަށް ނާޅާ، އަދި މޮޑެލް ތަމްރީނުކުރުމަށް ބޭނުމެއް ނުކުރޭ.
+			</p>
+		{/if}
 	</div>
 
-	<!-- Starter chips -->
+	<!-- Starter chips (hidden in incognito) -->
+	{#if !incognito}
 	<div class="flex flex-wrap justify-center gap-2 max-w-2xl animate-fade-in-up" style="animation-delay: 300ms">
 		{#each STARTERS.filter(s => s.starterText) as starter}
 			{@const Icon = iconMap[starter.icon]}
@@ -98,4 +112,5 @@
 			</button>
 		{/each}
 	</div>
+	{/if}
 </div>

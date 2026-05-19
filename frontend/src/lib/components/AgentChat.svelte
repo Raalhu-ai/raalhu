@@ -42,7 +42,9 @@
 		onRefreshSessions = () => {},
 		onArtifactOpen = () => {},
 		title = '',
-		projectContext = undefined
+		projectContext = undefined,
+		incognito = false,
+		onExitIncognito = () => {}
 	}: {
 		model: string;
 		models?: string[];
@@ -56,6 +58,8 @@
 		onArtifactOpen?: () => void;
 		title?: string;
 		projectContext?: ProjectContext;
+		incognito?: boolean;
+		onExitIncognito?: () => void;
 	} = $props();
 
 	let messages = $state<AgentMessage[]>(initialMessages);
@@ -630,28 +634,30 @@
 			chatInputRef?.focus();
 		}
 
-		await saveAgentMessages(sessionId, messages);
-		await saveAgentContents(sessionId, contents);
+		if (!incognito) {
+			await saveAgentMessages(sessionId, messages);
+			await saveAgentContents(sessionId, contents);
 
-		try {
-			const fs = await sandbox.snapshotFS();
-			if (Object.keys(fs).length > 0) {
-				await saveAgentFS(sessionId, fs);
+			try {
+				const fs = await sandbox.snapshotFS();
+				if (Object.keys(fs).length > 0) {
+					await saveAgentFS(sessionId, fs);
+				}
+			} catch (err) {
+				console.warn('[AgentChat] FS snapshot failed:', err);
 			}
-		} catch (err) {
-			console.warn('[AgentChat] FS snapshot failed:', err);
-		}
 
-		if (!titleRequested) {
-			titleRequested = true;
-			const aiTitle = await fetchAITitle(text);
-			if (aiTitle) {
-				await updateSessionTitle(sessionId, aiTitle);
-				onRefreshSessions();
+			if (!titleRequested) {
+				titleRequested = true;
+				const aiTitle = await fetchAITitle(text);
+				if (aiTitle) {
+					await updateSessionTitle(sessionId, aiTitle);
+					onRefreshSessions();
+				}
 			}
-		}
 
-		onRefreshSessions();
+			onRefreshSessions();
+		}
 	}
 
 	function copyMessage(id: string, content: string) {
@@ -733,7 +739,18 @@
 	<div class="flex-1 min-w-0 flex flex-col relative">
 		<!-- Top bar -->
 		<div class="shrink-0 pe-5 ps-14 lg:ps-5 py-3 z-10">
-			{#if renamingTitle}
+			{#if incognito}
+				<div class="flex items-center justify-between gap-2">
+					<span class="thaana text-sm text-muted-foreground">ސިއްރު ޗެޓް</span>
+					<button
+						onclick={onExitIncognito}
+						class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
+						title="ނިންމާ"
+					>
+						<X class="w-4 h-4" />
+					</button>
+				</div>
+			{:else if renamingTitle}
 				<div class="flex items-center gap-2">
 					<input
 						bind:value={renameValue}
