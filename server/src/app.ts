@@ -42,7 +42,7 @@ const app = new Hono<Env>();
 app.use(
 	'*',
 	cors({
-		origin: (origin) => origin || process.env.CORS_ORIGIN || 'http://localhost:5173',
+		origin: (origin) => origin || 'http://localhost:5173',
 		credentials: true,
 		allowHeaders: ['Content-Type', 'X-Session'],
 		exposeHeaders: ['Set-Cookie']

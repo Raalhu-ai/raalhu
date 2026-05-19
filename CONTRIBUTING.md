@@ -19,7 +19,28 @@ Thanks for your interest in contributing! This guide will help you get started.
    ```bash
    bun install
    ```
-4. Start the dev server:
+4. Configure the backend:
+
+   `server/wrangler.toml` is gitignored — copy the example and fill in your values:
+   ```bash
+   cp server/wrangler.toml.example server/wrangler.toml
+   ```
+
+   Create your KV namespaces (requires a Cloudflare account):
+   ```bash
+   cd server
+   bunx wrangler kv namespace create AUTH_SESSIONS
+   bunx wrangler kv namespace create SESSIONS
+   ```
+   Paste the returned IDs into `server/wrangler.toml`.
+
+   Add your OAuth credentials to `server/.dev.vars` (create the file if it doesn't exist):
+   ```
+   OAUTH_CLIENT_ID=your-google-oauth-client-id
+   OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+   ```
+
+5. Start the dev server:
    ```bash
    bun dev
    ```
