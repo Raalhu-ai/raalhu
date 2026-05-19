@@ -39,6 +39,7 @@ Thumbs.db
 
 # Wrangler
 server/.wrangler/
+frontend/.wrangler/
 
 # Whisper quantization (temporary)
 venv/

@@ -3,38 +3,42 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:frontend\"",
-    "dev:server": "pnpm --filter mogger-server dev",
-    "dev:mobile": "pnpm --filter @raalhu/mobile dev",
-    "dev:desktop": "concurrently \"pnpm dev:server\" \"pnpm --filter @raalhu/desktop dev\"",
-    "dev:frontend": "pnpm --filter mogger-frontend dev",
-    "dev:landing": "pnpm --filter @raalhu/landing dev",
-    "build:landing": "pnpm --filter @raalhu/landing build",
-    "build:web": "pnpm --filter mogger-frontend build",
-    "dev:extension": "pnpm --filter @raalhu/extension dev",
-    "build:desktop": "pnpm --filter @raalhu/desktop build",
-    "build:extension": "pnpm --filter @raalhu/extension build",
-    "typecheck": "pnpm -r typecheck"
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:frontend\"",
+    "dev:server": "bun --filter mogger-server dev",
+    "dev:mobile": "bun --filter @raalhu/mobile dev",
+    "dev:desktop": "concurrently \"bun run dev:server\" \"bun --filter @raalhu/desktop dev\"",
+    "dev:frontend": "bun --filter mogger-frontend dev",
+    "dev:landing": "bun --filter @raalhu/landing dev",
+    "build:landing": "bun --filter @raalhu/landing build",
+    "build:web": "bun --filter mogger-frontend build",
+    "dev:extension": "bun --filter @raalhu/extension dev",
+    "build:desktop": "bun --filter @raalhu/desktop build",
+    "build:extension": "bun --filter @raalhu/extension build",
+    "typecheck": "bun --filter '*' typecheck"
   },
+  "workspaces": [
+    "server",
+    "frontend",
+    "apps/*",
+    "packages/*"
+  ],
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "concurrently": "^9.2.1",
     "sharp": "^0.34.5",
     "wawoff2": "^2.0.1"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
-      "sharp",
-      "workerd"
-    ],
-    "overrides": {
-      "react": "19.2.0",
-      "react-dom": "19.2.0"
-    },
-    "patchedDependencies": {
-      "metro-config@0.83.3": "patches/metro-config@0.83.3.patch"
-    }
+  "trustedDependencies": [
+    "electron",
+    "esbuild",
+    "sharp",
+    "workerd"
+  ],
+  "overrides": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "patchedDependencies": {
+    "metro-config@0.83.3": "patches/metro-config@0.83.3.patch"
   }
 }

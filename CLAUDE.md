@@ -2,50 +2,52 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Note for Claude:** Never start dev servers yourself. Ask the user to run them and report back the output.
+
 ## Development Commands
 
 ```bash
 # Start backend + SvelteKit frontend together (most common)
-pnpm dev
+bun dev
 
 # Start backend only (Hono on Cloudflare Workers, port 3000)
-pnpm dev:server
+bun dev:server
 
 # Start SvelteKit frontend only
-pnpm dev:frontend
+bun dev:frontend
 
 # Start mobile app (Expo, iOS/Android)
-pnpm dev:mobile
+bun dev:mobile
 
 # Start desktop app (Electron + backend together)
-pnpm dev:desktop
+bun dev:desktop
 
 # Start browser extension dev (watch mode)
-pnpm dev:extension
+bun dev:extension
 
 # Build web for production (SvelteKit)
-pnpm build:web
+bun build:web
 
 # Build browser extension
-pnpm build:extension
+bun build:extension
 
 # Deploy backend (Cloudflare Worker) — must be done manually
-cd server && pnpm run deploy
+cd server && bun run deploy
 ```
 
-Always use `pnpm`.
+Always use `bun`.
 
 ## Deployment
 
 - **Web** (Cloudflare Pages): deploys automatically on git push (SvelteKit build from `frontend/`)
-- **Backend** (Cloudflare Worker): must be manually deployed via `cd server && pnpm run deploy`
-- **Mobile**: via EAS Build (`pnpm --filter @raalhu/mobile build:ios` / `build:android`)
-- **Desktop**: via electron-builder (`pnpm --filter @raalhu/desktop package`)
-- **Extension**: `pnpm build:extension` → load `apps/extension/dist/` as unpacked extension in Chrome
+- **Backend** (Cloudflare Worker): must be manually deployed via `cd server && bun run deploy`
+- **Mobile**: via EAS Build (`bun --filter @raalhu/mobile build:ios` / `build:android`)
+- **Desktop**: via electron-builder (`bun --filter @raalhu/desktop package`)
+- **Extension**: `bun build:extension` → load `apps/extension/dist/` as unpacked extension in Chrome
 
 ## Architecture
 
-Monorepo with pnpm workspaces:
+Monorepo with bun workspaces:
 
 ```
 frontend/     → SvelteKit web app (PRIMARY, self-contained — no @raalhu/* imports)
