@@ -1158,6 +1158,7 @@
 						{models}
 						onSend={handleSend}
 						disabled={running || quotaExhausted || sandboxLoading}
+						{incognito}
 					/>
 				{/if}
 			</div>

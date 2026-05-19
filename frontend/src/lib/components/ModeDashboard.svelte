@@ -84,6 +84,7 @@
 			{models}
 			onSend={handleSend}
 			autofocus={true}
+			{incognito}
 		/>
 		{#if incognito}
 			<p class="thaana text-muted-foreground/80 text-xs text-center mt-3 max-w-xl mx-auto leading-relaxed">
