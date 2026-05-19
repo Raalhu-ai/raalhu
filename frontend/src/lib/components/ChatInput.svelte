@@ -37,10 +37,11 @@
 		value = $bindable(''),
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
-		placeholder = 'މެސެޖެއް ލިޔުއްވާ...',
+		placeholder = 'މެސެޖެއް ލިޔުއްވާ.',
 		onSend,
 		disabled = false,
 		autofocus = false,
+		incognito = false,
 	}: {
 		value: string;
 		selectedModel?: string;
@@ -49,6 +50,7 @@
 		onSend: (data: ChatInputSendData) => void;
 		disabled?: boolean;
 		autofocus?: boolean;
+		incognito?: boolean;
 	} = $props();
 
 	let files = $state<AttachedFile[]>([]);
@@ -343,10 +345,10 @@
 	ondrop={onDrop}
 >
 	<!-- Main container -->
-	<div class="flex flex-col rounded-2xl border border-border bg-card
+	<div class="flex flex-col rounded-2xl border bg-card
 		shadow-sm hover:shadow-md focus-within:shadow-md
-		focus-within:border-ring/50
-		transition-all duration-200">
+		transition-all duration-200
+		{incognito ? 'border-dashed border-ring/60 focus-within:border-ring' : 'border-border focus-within:border-ring/50'}">
 
 		<div class="flex flex-col px-3 pt-3 pb-3 gap-2">
 			<!-- Attachments row -->
