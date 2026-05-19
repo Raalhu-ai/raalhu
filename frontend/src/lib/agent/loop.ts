@@ -337,14 +337,19 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
  */
 export function buildContents(
 	existingContents: GeminiContent[],
-	userMessage: string
+	userMessage: string,
+	imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = []
 ): GeminiContent[] {
-	console.log(`[AgentLoop] buildContents: ${existingContents.length} existing + new user message (${userMessage.length} chars)`);
+	console.log(`[AgentLoop] buildContents: ${existingContents.length} existing + new user message (${userMessage.length} chars, ${imageParts.length} images)`);
+	const parts: Record<string, unknown>[] = [
+		...imageParts,
+		{ text: userMessage }
+	];
 	return [
 		...existingContents,
 		{
 			role: 'user',
-			parts: [{ text: userMessage }]
+			parts
 		}
 	];
 }
