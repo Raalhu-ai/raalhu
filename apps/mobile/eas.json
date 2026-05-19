@@ -6,7 +6,7 @@
   "build": {
     "base": {
       "node": "22.15.0",
-      "pnpm": "10.14.0",
+      "bun": "1.x",
       "env": {
         "EXPO_USE_METRO_WORKSPACE_ROOT": "1"
       }

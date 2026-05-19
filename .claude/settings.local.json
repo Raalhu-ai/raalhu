@@ -14,7 +14,7 @@
       "WebFetch(domain:vercel.com)",
       "WebFetch(domain:api.github.com)",
       "Bash(tree:*)",
-      "Bash(pnpm build:web)"
+      "Bash(bun build:web)"
     ]
   }
 }

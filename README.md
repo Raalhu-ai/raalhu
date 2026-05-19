@@ -23,16 +23,16 @@ server/          → Hono backend on Cloudflare Workers
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) 9+
+- [Bun](https://bun.sh/) 1.x+
 
 ## Quick Start
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Start backend + web frontend together
-pnpm dev
+bun dev
 ```
 
 The web app will be available at `http://localhost:5173` and the API at `http://localhost:3000`.
@@ -41,32 +41,32 @@ The web app will be available at `http://localhost:5173` and the API at `http://
 
 ```bash
 # Backend only (Hono on Cloudflare Workers, port 3000)
-pnpm dev:server
+bun dev:server
 
 # SvelteKit frontend only
-pnpm dev:frontend
+bun dev:frontend
 
 # Mobile (Expo — requires iOS/Android simulator or device)
-pnpm dev:mobile
+bun dev:mobile
 
 # Desktop (Electron — starts backend automatically)
-pnpm dev:desktop
+bun dev:desktop
 
 # Browser extension (watch mode — load dist/ as unpacked in Chrome)
-pnpm dev:extension
+bun dev:extension
 ```
 
 ## Building for Production
 
 ```bash
 # Web (SvelteKit)
-pnpm build:web
+bun build:web
 
 # Desktop (Electron)
-pnpm build:desktop
+bun build:desktop
 
 # Browser extension
-pnpm build:extension
+bun build:extension
 ```
 
 ## Deployment
@@ -74,10 +74,10 @@ pnpm build:extension
 | Platform   | Method                                                                 |
 | ---------- | ---------------------------------------------------------------------- |
 | Web        | Cloudflare Pages — deploys automatically on `git push`                 |
-| Backend    | Cloudflare Worker — manual: `cd server && pnpm run deploy`             |
-| Mobile     | EAS Build: `pnpm --filter @raalhu/mobile build:ios` / `build:android` |
-| Desktop    | electron-builder: `pnpm --filter @raalhu/desktop package`             |
-| Extension  | `pnpm build:extension` → load `apps/extension/dist/` in Chrome        |
+| Backend    | Cloudflare Worker — manual: `cd server && bun run deploy`             |
+| Mobile     | EAS Build: `bun --filter @raalhu/mobile build:ios` / `build:android` |
+| Desktop    | electron-builder: `bun --filter @raalhu/desktop package`             |
+| Extension  | `bun build:extension` → load `apps/extension/dist/` in Chrome        |
 
 ## Environment Variables
 

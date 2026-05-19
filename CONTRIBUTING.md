@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide will help you get started.
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) 9+
+- [Bun](https://bun.sh/) 1.x+
 
 ## Getting Started
 
@@ -17,11 +17,11 @@ Thanks for your interest in contributing! This guide will help you get started.
    ```
 3. Install dependencies:
    ```bash
-   pnpm install
+   bun install
    ```
 4. Start the dev server:
    ```bash
-   pnpm dev
+   bun dev
    ```
 
 See the [README](README.md) for commands to run individual apps (mobile, desktop, extension).
@@ -51,7 +51,7 @@ See the [README](README.md) for commands to run individual apps (mobile, desktop
 
 ## Project Structure
 
-This is a pnpm monorepo. See [CLAUDE.md](CLAUDE.md) for a detailed architecture overview, including package scopes, shared agent logic, and platform-specific details.
+This is a bun monorepo. See [CLAUDE.md](CLAUDE.md) for a detailed architecture overview, including package scopes, shared agent logic, and platform-specific details.
 
 ## Code of Conduct
 

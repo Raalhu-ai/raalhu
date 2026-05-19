@@ -8,7 +8,7 @@
 
 ## Test plan
 
-- [ ] Tested locally with `pnpm dev`
+- [ ] Tested locally with `bun dev`
 - [ ] Relevant app(s) still build and run
 
 ## Related issues
