@@ -16,7 +16,7 @@
 		incognito = false
 	}: {
 		userName: string;
-		onSendMessage: (text: string) => void;
+		onSendMessage: (data: ChatInputSendData) => void;
 		selectedModel?: string;
 		models?: string[];
 		activeProject?: Project | null;
@@ -44,8 +44,8 @@
 
 	function handleSend(data: ChatInputSendData) {
 		const text = data.message.trim();
-		if (!text) return;
-		onSendMessage(text);
+		if (!text && data.files.length === 0) return;
+		onSendMessage(data);
 	}
 </script>
 

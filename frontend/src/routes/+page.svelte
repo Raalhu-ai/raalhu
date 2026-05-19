@@ -30,6 +30,7 @@
 	import { listProjects, createProject as createProjectStore, getProject, verifyFilePermission } from '$lib/project-store';
 	import type { AgentMessage } from '$lib/agent/types';
 	import type { ProjectContext } from '$lib/project-context';
+	import type { AttachedFile, ChatInputSendData } from '$lib/components/ChatInput.svelte';
 
 	// --- App state ---
 	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
@@ -49,6 +50,7 @@
 	// --- Agent state ---
 	let agentInitialMessages = $state<AgentMessage[]>([]);
 	let pendingUserMessage = $state('');
+	let pendingUserFiles = $state<AttachedFile[]>([]);
 	let activeProjectContext = $state<ProjectContext | undefined>(undefined);
 
 	// --- Session history ---
@@ -240,11 +242,14 @@
 	}
 
 	// --- Dashboard send message → start agent session ---
-	async function onDashboardSendMessage(text: string) {
+	async function onDashboardSendMessage(data: ChatInputSendData | string) {
+		const text = typeof data === 'string' ? data : data.message.trim();
+		const files = typeof data === 'string' ? [] : data.files;
 		const sessionId = crypto.randomUUID();
 		activeSessionId = sessionId;
 		agentInitialMessages = [];
 		pendingUserMessage = text;
+		pendingUserFiles = files;
 
 		// Incognito mode: skip project context and skip session persistence entirely
 		if (incognitoActive) {
@@ -309,6 +314,7 @@
 		activeProjectContext = undefined;
 		agentInitialMessages = [];
 		pendingUserMessage = '';
+		pendingUserFiles = [];
 		creatingProject = false;
 		creatingArtifact = false;
 		selectedInspirationId = null;
@@ -608,6 +614,7 @@
 						sessionId={activeSessionId}
 						initialMessages={agentInitialMessages}
 						initialUserMessage={pendingUserMessage}
+						initialUserFiles={pendingUserFiles}
 						title={activeSessionTitle}
 						projectContext={activeProjectContext}
 						onRename={(newTitle) => activeSessionId && handleRename(activeSessionId, newTitle)}

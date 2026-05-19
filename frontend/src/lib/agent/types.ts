@@ -75,6 +75,10 @@ export interface AgentMessage {
 	role: 'user' | 'assistant';
 	/** Final text content (for serialization/title generation) */
 	content: string;
+	/** Inline images attached to a user message (in-memory only, stripped on save) */
+	images?: { mimeType: string; data: string }[];
+	/** Persistent placeholder: count of images that were attached, set after restore */
+	imageCount?: number;
 	/** Sequential steps: text, tool calls, artifacts in order */
 	steps?: AgentStep[];
 }

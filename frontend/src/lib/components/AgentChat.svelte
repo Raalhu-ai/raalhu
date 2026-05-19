@@ -2,7 +2,7 @@
 	import { tick, onMount, onDestroy } from 'svelte';
 	import {
 		Copy, Check, Download, ChevronDown, ChevronRight, ChevronLeft,
-		FileText,
+		FileText, Paperclip,
 		Pencil, Trash2, X, ArrowLeft
 	} from 'lucide-svelte';
 	import ChatInput from './ChatInput.svelte';
@@ -37,6 +37,7 @@
 		sessionId,
 		initialMessages = [],
 		initialUserMessage = '',
+		initialUserFiles = [] as AttachedFile[],
 		onRename = (_title: string) => {},
 		onDelete = () => {},
 		onRefreshSessions = () => {},
@@ -52,6 +53,7 @@
 		sessionId: string;
 		initialMessages?: AgentMessage[];
 		initialUserMessage?: string;
+		initialUserFiles?: AttachedFile[];
 		onRename?: (title: string) => void;
 		onDelete?: () => void;
 		onRefreshSessions?: () => void;
@@ -401,7 +403,7 @@
 
 		// Auto-send initial message from dashboard
 		if (initialUserMessage && messages.length === 0) {
-			handleSend({ message: initialUserMessage, files: [], pastedContent: [], webSearchEnabled: false, style: 'normal' });
+			handleSend({ message: initialUserMessage, files: initialUserFiles, pastedContent: [], webSearchEnabled: false, style: 'normal' });
 		}
 	});
 
@@ -445,7 +447,8 @@
 		const userMsg: AgentMessage = {
 			id: crypto.randomUUID(),
 			role: 'user',
-			content: text
+			content: text,
+			...(imageParts.length > 0 && { images: imageParts.map(p => p.inlineData) })
 		};
 		messages = [...messages, userMsg];
 
@@ -809,10 +812,28 @@
 				<div class="max-w-[760px] mx-auto p-5 flex flex-col gap-2.5">
 					{#each messages as message}
 						{#if message.role === 'user'}
-							<div class="animate-fade-in-up max-w-[65%] self-start">
-								<div class="px-3.5 py-2.5 break-words thaana text-[18.5px] leading-[45px] bg-primary/10 border border-primary/20 rounded-[14px] rounded-tr-sm">
-									{message.content}
-								</div>
+							<div class="animate-fade-in-up max-w-[65%] self-start flex flex-col gap-1.5">
+								{#if message.images && message.images.length > 0}
+									<div class="flex flex-wrap gap-2">
+										{#each message.images as img}
+											<img
+												src="data:{img.mimeType};base64,{img.data}"
+												alt=""
+												class="max-h-48 max-w-full rounded-xl border border-primary/20 object-cover"
+											/>
+										{/each}
+									</div>
+								{:else if message.imageCount && message.imageCount > 0}
+									<div class="thaana inline-flex items-center gap-1.5 self-end px-2.5 py-1 text-xs text-muted-foreground bg-muted border border-border rounded-full w-fit">
+										<Paperclip class="w-3 h-3" />
+										<span>{message.imageCount > 1 ? `${message.imageCount} ފޮޓޯ` : 'ފޮޓޯ'}</span>
+									</div>
+								{/if}
+								{#if message.content}
+									<div class="px-3.5 py-2.5 break-words thaana text-[18.5px] leading-[45px] bg-primary/10 border border-primary/20 rounded-[14px] rounded-tr-sm">
+										{message.content}
+									</div>
+								{/if}
 							</div>
 						{:else}
 							<div class="max-w-full self-start flex flex-col group/msg">
