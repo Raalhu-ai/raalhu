@@ -483,7 +483,7 @@
 			<!-- Raalhu icon (normal mode only, desktop only) -->
 			{#if !incognitoActive}
 			<button
-				class="hidden lg:block absolute top-3 left-3 z-30 p-1.5 rounded-lg group/logo transition-opacity duration-200 opacity-60 hover:opacity-90"
+				class="block absolute top-3 end-3 lg:end-auto lg:start-3 z-30 p-1.5 rounded-lg group/logo transition-opacity duration-200 opacity-60 hover:opacity-90"
 				onclick={() => (incognitoActive = true)}
 			>
 				<div class="relative">
