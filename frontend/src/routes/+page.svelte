@@ -487,7 +487,7 @@
 				onclick={() => (incognitoActive = true)}
 			>
 				<div class="relative">
-					<span dir="rtl" class="thaana pointer-events-none absolute top-1/2 -translate-y-1/2 left-full ml-2 px-2 py-1 text-xs text-foreground bg-card border border-border rounded-md
+					<span dir="rtl" class="thaana pointer-events-none absolute top-1/2 -translate-y-1/2 right-full mr-2 px-2 py-1 text-xs text-foreground bg-card border border-border rounded-md
 						opacity-0 group-hover/logo:opacity-100 transition-opacity duration-150 whitespace-nowrap shadow-sm">
 						ސިއްރު
 					</span>
