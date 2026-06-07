@@ -9,6 +9,7 @@ import {
 	setSessionCookie,
 	clearSessionCookie
 } from './session';
+import { generateWithGeminiApi, streamWithGeminiApi } from './gemini-api';
 
 // --- Types ---
 
@@ -44,7 +45,7 @@ app.use(
 	cors({
 		origin: (origin) => origin || 'http://localhost:5173',
 		credentials: true,
-		allowHeaders: ['Content-Type', 'X-Session'],
+		allowHeaders: ['Content-Type', 'X-Session', 'X-Gemini-API-Key'],
 		exposeHeaders: ['Set-Cookie']
 	})
 );
@@ -157,6 +158,77 @@ function extractProject(val: any): string | null {
 	if (!val) return null;
 	if (typeof val === 'string') return val;
 	return val.id || val.name || null;
+}
+
+type MemoriesPayload = {
+	global?: unknown;
+	project?: unknown;
+	projectName?: unknown;
+};
+
+function cleanMemory(value: unknown): string {
+	return typeof value === 'string' ? value.trim() : '';
+}
+
+function buildMemoryBlock(memories: MemoriesPayload | undefined): string {
+	if (!memories) return '';
+
+	const globalMemory = cleanMemory(memories.global);
+	const projectMemory = cleanMemory(memories.project);
+	const projectName = cleanMemory(memories.projectName);
+
+	if (!globalMemory && !projectMemory) return '';
+
+	const sections = ['## ހަނދާންތައް'];
+	if (globalMemory) {
+		sections.push(`### އާންމު ހަނދާންތައް\n${globalMemory}`);
+	}
+	if (projectMemory) {
+		const title = projectName
+			? `### ޕްރޮޖެކްޓް ހަނދާންތައް: ${projectName}`
+			: '### ޕްރޮޖެކްޓް ހަނދާންތައް';
+		sections.push(`${title}\n${projectMemory}`);
+	}
+
+	return sections.join('\n\n');
+}
+
+function appendMemoriesToSystemInstruction(systemInstruction: unknown, memories: MemoriesPayload | undefined) {
+	const memoryBlock = buildMemoryBlock(memories);
+	if (!memoryBlock) return systemInstruction;
+
+	const fallback = {
+		role: 'user',
+		parts: [{ text: memoryBlock }]
+	};
+
+	if (!systemInstruction || typeof systemInstruction !== 'object') return fallback;
+
+	const source = systemInstruction as { role?: unknown; parts?: unknown };
+	const parts = Array.isArray(source.parts) ? [...source.parts] : [];
+	const textPartIndex = parts.findIndex(
+		(part) => !!part && typeof part === 'object' && typeof (part as any).text === 'string'
+	);
+
+	if (textPartIndex >= 0) {
+		const textPart = parts[textPartIndex] as { text: string };
+		parts[textPartIndex] = { ...textPart, text: `${textPart.text}\n\n${memoryBlock}` };
+	} else {
+		parts.push({ text: memoryBlock });
+	}
+
+	return {
+		...(systemInstruction as Record<string, unknown>),
+		role: typeof source.role === 'string' ? source.role : 'user',
+		parts
+	};
+}
+
+function withMemorySystemInstruction<T extends Record<string, any>>(body: T): T {
+	return {
+		...body,
+		systemInstruction: appendMemoriesToSystemInstruction(body.systemInstruction, body.memories)
+	} as T;
 }
 
 // ==================== AUTH ROUTES ====================
@@ -400,16 +472,25 @@ app.post('/api/setup', authMiddleware, async (c) => {
 
 app.post('/api/generate', authMiddleware, async (c) => {
 	const session = c.get('session');
-	const { accessToken, project } = session;
-	if (!project) return c.json({ error: 'No project set up' }, 400);
+	const geminiApiKey = c.req.header('X-Gemini-API-Key')?.trim();
 
-	const body = await c.req.json();
+	const rawBody = await c.req.json();
+	const hasMemories = !!buildMemoryBlock((rawBody as any).memories);
+	const body = withMemorySystemInstruction(rawBody as any);
 	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } =
 		body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[generate] model=${resolvedModel} tools=${tools ? 'yes' : 'no'}`);
+	console.log(`[generate] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} provider=${geminiApiKey ? 'gemini-api' : 'code-assist'}`);
 
 	try {
+		if (geminiApiKey) {
+			const data = await generateWithGeminiApi(geminiApiKey, body);
+			return c.json(data);
+		}
+
+		const { accessToken, project } = session;
+		if (!project) return c.json({ error: 'No project set up' }, 400);
+
 		const apiRes = await fetch(`${CODE_ASSIST_BASE}:generateContent`, {
 			method: 'POST',
 			headers: {
@@ -450,16 +531,32 @@ app.post('/api/generate', authMiddleware, async (c) => {
 
 app.post('/api/stream', authMiddleware, async (c) => {
 	const session = c.get('session');
-	const { accessToken, project } = session;
-	if (!project) return c.json({ error: 'No project set up' }, 400);
+	const geminiApiKey = c.req.header('X-Gemini-API-Key')?.trim();
 
-	const body = await c.req.json();
+	const rawBody = await c.req.json();
+	const hasMemories = !!buildMemoryBlock((rawBody as any).memories);
+	const body = withMemorySystemInstruction(rawBody as any);
 	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } =
 		body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[stream] model=${resolvedModel} tools=${tools ? 'yes' : 'no'}`);
+	console.log(`[stream] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} provider=${geminiApiKey ? 'gemini-api' : 'code-assist'}`);
 
 	try {
+		if (geminiApiKey) {
+			const stream = await streamWithGeminiApi(geminiApiKey, body);
+			return new Response(stream, {
+				headers: {
+					'Content-Type': 'text/event-stream',
+					'Cache-Control': 'no-cache',
+					Connection: 'keep-alive',
+					'X-Accel-Buffering': 'no'
+				}
+			});
+		}
+
+		const { accessToken, project } = session;
+		if (!project) return c.json({ error: 'No project set up' }, 400);
+
 		const apiRes = await fetch(
 			`${CODE_ASSIST_BASE}:streamGenerateContent?alt=sse`,
 			{

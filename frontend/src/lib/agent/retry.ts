@@ -242,6 +242,17 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function hasGeminiApiKeyHeader(headers: RequestInit['headers']): boolean {
+	if (!headers) return false;
+	if (headers instanceof Headers) return !!headers.get('X-Gemini-API-Key');
+	if (Array.isArray(headers)) {
+		return headers.some(([key, value]) => key.toLowerCase() === 'x-gemini-api-key' && !!value);
+	}
+	return Object.entries(headers).some(
+		([key, value]) => key.toLowerCase() === 'x-gemini-api-key' && !!value
+	);
+}
+
 export interface RetryResult {
 	response: Response;
 	wasRetried: boolean;
@@ -259,6 +270,7 @@ export interface RetryResult {
  */
 export async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
 	let currentDelay = INITIAL_DELAY_MS;
+	const skipRetry = hasGeminiApiKeyHeader(init.headers);
 
 	for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 		const res = await fetch(url, init);
@@ -266,6 +278,14 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
 		if (res.ok) return res;
 
 		const errText = await res.text();
+
+		if (skipRetry) {
+			return new Response(errText, {
+				status: res.status,
+				statusText: res.statusText,
+				headers: res.headers
+			});
+		}
 
 		// Classify the error
 		if (res.status === 429 || res.status === 503) {

@@ -6,7 +6,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	const { model, contents, systemInstruction, tools, toolConfig, generationConfig } = body;
 
 	const cookie = request.headers.get('cookie') || '';
+	const geminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
 	const userPromptId = crypto.randomUUID();
+	const headers: Record<string, string> = { 'Content-Type': 'application/json', Cookie: cookie };
+	if (geminiApiKey) headers['X-Gemini-API-Key'] = geminiApiKey;
 
 	console.log(`[agent-generate] model=${model} contents=${contents?.length} messages systemInstruction=${!!systemInstruction} tools=${tools?.[0]?.functionDeclarations?.length ?? 0} declarations`);
 	console.log(`[agent-generate] Last content role=${contents?.[contents.length - 1]?.role} parts=${contents?.[contents.length - 1]?.parts?.length}`);
@@ -38,7 +41,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 	const backendRes = await fetch(`${BACKEND}/api/generate`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', Cookie: cookie },
+		headers,
 		body: JSON.stringify(payload)
 	});
 

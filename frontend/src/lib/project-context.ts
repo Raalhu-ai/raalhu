@@ -20,11 +20,6 @@ function isTextMime(mime: string): boolean {
 export async function injectProjectContext(basePrompt: string, ctx: ProjectContext): Promise<string> {
 	let additions = '';
 
-	if (ctx.memory.trim()) {
-		additions += `\n\n## ޕްރޮޖެކްޓް މެމޮރީ\n`;
-		additions += ctx.memory.trim();
-	}
-
 	if (ctx.instructions.trim()) {
 		additions += `\n\n## ޕްރޮޖެކްޓް: ${ctx.name} — ކަސްޓަމް އިރުޝާދުތައް\n`;
 		additions += ctx.instructions.trim();

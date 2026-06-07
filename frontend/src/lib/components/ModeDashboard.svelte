@@ -12,6 +12,7 @@
 		onSendMessage,
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
+		modelProvider = 'code-assist',
 		activeProject = null,
 		incognito = false
 	}: {
@@ -19,6 +20,7 @@
 		onSendMessage: (data: ChatInputSendData) => void;
 		selectedModel?: string;
 		models?: string[];
+		modelProvider?: 'code-assist' | 'gemini-api';
 		activeProject?: Project | null;
 		incognito?: boolean;
 	} = $props();
@@ -82,6 +84,7 @@
 			bind:value={inputValue}
 			bind:selectedModel
 			{models}
+			{modelProvider}
 			onSend={handleSend}
 			autofocus={true}
 			{incognito}

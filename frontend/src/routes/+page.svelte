@@ -14,7 +14,8 @@
 	import InspirationDetailPage from '$lib/components/InspirationDetailPage.svelte';
 	import SettingsPage from '$lib/components/SettingsPage.svelte';
 	import { getInspirationCard } from '$lib/inspiration-cards';
-	import { applyTheme, applyFontSize } from '$lib/settings';
+	import { applyTheme, applyFontSize, loadSettings, type Settings } from '$lib/settings';
+	import { setModelProvider, type ModelProvider } from '$lib/gemini-api';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import type { ChatSession, Project } from '$lib/db';
 	import {
@@ -36,6 +37,7 @@
 	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
 	let user = $state<User | null>(null);
 	let selectedModel = $state('gemini-3-flash-preview');
+	let modelProvider = $state<ModelProvider>('code-assist');
 	let quotas = $state<QuotaModel[]>([]);
 	let quotaLoading = $state(false);
 	let setupLoading = $state(false);
@@ -91,14 +93,39 @@
 		quotas.find((q) => q.modelId === selectedModel)
 	);
 
+	const usingGeminiApi = $derived(modelProvider === 'gemini-api');
+
 	const quotaExhausted = $derived(
-		selectedModelQuota ? (selectedModelQuota.remainingFraction ?? 0) < 0.05 : false
+		!usingGeminiApi && selectedModelQuota ? (selectedModelQuota.remainingFraction ?? 0) < 0.05 : false
 	);
 
 	// --- Init ---
 	function toggleSidebar() {
 		sidebarCollapsed = !sidebarCollapsed;
 		localStorage.setItem('mogger_sidebar', sidebarCollapsed ? 'collapsed' : 'expanded');
+	}
+
+	onMount(() => {
+		function syncProvider(settings = loadSettings()) {
+			modelProvider =
+				settings.modelProvider === 'gemini-api' &&
+				settings.geminiApiKeyStatus === 'valid' &&
+				!!settings.geminiApiKey.trim()
+					? 'gemini-api'
+					: 'code-assist';
+		}
+
+		syncProvider();
+		const onSettingsChanged = (event: Event) => {
+			syncProvider((event as CustomEvent<Settings>).detail);
+		};
+		window.addEventListener('mogger-settings-changed', onSettingsChanged);
+		return () => window.removeEventListener('mogger-settings-changed', onSettingsChanged);
+	});
+
+	function switchToCodeAssistProxy() {
+		setModelProvider('code-assist');
+		modelProvider = 'code-assist';
 	}
 
 	onMount(async () => {
@@ -115,10 +142,10 @@
 			appState = 'login';
 			return;
 		}
-		if (!user.project) {
-			try {
-				const result = await setupCodeAssist();
-				user = { ...user, project: result.project, tier: result.tier };
+			if (!user.project) {
+				try {
+					const result = await setupCodeAssist();
+					user = { ...user, project: result.project, tier: result.tier };
 			} catch (err: any) {
 				appState = 'setup';
 				const msg = err.message || 'Setup failed';
@@ -139,7 +166,7 @@
 			const loaded = await loadSession(resumeId);
 			if (loaded) {
 				history.replaceState(history.state, '', `/chat/${resumeId}`);
-				loadQuota();
+				if (user.project) loadQuota();
 				return;
 			}
 		}
@@ -149,12 +176,12 @@
 		if (resumeProjectId) {
 			sessionStorage.removeItem('mogger_resume_project');
 			await openProject(resumeProjectId);
-			loadQuota();
+			if (user.project) loadQuota();
 			return;
 		}
 
 		appState = 'dashboard';
-		loadQuota();
+		if (user.project) loadQuota();
 	});
 
 	// --- Setup ---
@@ -454,8 +481,9 @@
 					bind:selectedModel
 					{models}
 					{quotas}
-					{quotaLoading}
-					onRefreshQuota={loadQuota}
+						{quotaLoading}
+						{modelProvider}
+						onRefreshQuota={loadQuota}
 					{user}
 					onLogout={handleLogout}
 					onSettings={openSettings}
@@ -583,8 +611,9 @@
 					userName={user?.name ?? ''}
 					onSendMessage={onDashboardSendMessage}
 					bind:selectedModel
-					{models}
-					{activeProject}
+						{models}
+						{modelProvider}
+						{activeProject}
 					incognito={incognitoActive}
 				/>
 			{:else if appState === 'project' && activeProjectId}
@@ -594,8 +623,9 @@
 					onStartChat={startChatInProject}
 					onOpenSession={resumeSession}
 					bind:selectedModel
-					{models}
-					onRefreshProjects={refreshProjects}
+						{models}
+						{modelProvider}
+						onRefreshProjects={refreshProjects}
 				/>
 			{:else if appState === 'settings'}
 				<SettingsPage
@@ -603,14 +633,16 @@
 					onLogout={handleLogout}
 					onBack={goBackToDashboard}
 					onSessionsCleared={refreshSessions}
+					onSessionsImported={refreshSessions}
 				/>
 			{:else if appState === 'chat' && activeSessionId}
 				{#key activeSessionId}
 				<div class="flex-1 overflow-hidden h-full">
 					<AgentChat
 						bind:model={selectedModel}
-						{models}
-						{quotaExhausted}
+							{models}
+							{modelProvider}
+							{quotaExhausted}
 						sessionId={activeSessionId}
 						initialMessages={agentInitialMessages}
 						initialUserMessage={pendingUserMessage}
@@ -622,8 +654,9 @@
 						onRefreshSessions={refreshSessions}
 						onArtifactOpen={() => { sidebarOpen = false; sidebarCollapsed = true; }}
 						incognito={incognitoActive}
-						onExitIncognito={exitIncognito}
-					/>
+							onExitIncognito={exitIncognito}
+							onSwitchToProxy={switchToCodeAssistProxy}
+						/>
 				</div>
 				{/key}
 			{/if}
@@ -674,8 +707,9 @@
 					bind:selectedModel
 					{models}
 					{quotas}
-					{quotaLoading}
-					onRefreshQuota={loadQuota}
+						{quotaLoading}
+						{modelProvider}
+						onRefreshQuota={loadQuota}
 					{user}
 					onLogout={handleLogout}
 					onSettings={() => { sidebarOpen = false; openSettings(); }}

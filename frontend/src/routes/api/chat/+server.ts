@@ -9,12 +9,12 @@ interface GeminiContent {
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const BACKEND = (platform?.env as any)?.BACKEND_URL || 'http://localhost:3000';
-	const { messages, model = 'gemini-3-flash-preview', mode, formData } = await request.json();
+	const { messages, model = 'gemini-3-flash-preview', mode, formData, memories } = await request.json();
 	const modeId = (mode || 'chat') as string;
 	const userPromptId = crypto.randomUUID();
 
 	console.log(
-		`[chat] model=${model} mode=${modeId} formData=${formData ? JSON.stringify(formData) : 'none'}`
+		`[chat] model=${model} mode=${modeId} formData=${formData ? JSON.stringify(formData) : 'none'} memories=${memories ? 'yes' : 'no'}`
 	);
 
 	// Build Gemini contents from AI SDK messages (skip sys- messages)
@@ -31,6 +31,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 	// Forward cookies for Express session auth
 	const cookie = request.headers.get('cookie') || '';
+	const geminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
+	const backendHeaders: Record<string, string> = { 'Content-Type': 'application/json', Cookie: cookie };
+	if (geminiApiKey) backendHeaders['X-Gemini-API-Key'] = geminiApiKey;
 
 	const isGenerateMode = modeId === 'generate' && !!formData?.documentType;
 	const isSearchMode = modeId === 'research' || modeId === 'web_search';
@@ -48,10 +51,11 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			systemInstruction,
 			tools,
 			toolConfig,
-			cookie,
+			backendHeaders,
 			userPromptId,
 			docType,
 			formData,
+			memories,
 			emit,
 			encoder
 		});
@@ -63,6 +67,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		contents,
 		generationConfig: { maxOutputTokens: 65536 },
 		systemInstruction,
+		...(memories && { memories }),
 		userPromptId,
 		...(tools && { tools }),
 		...(toolConfig && { toolConfig })
@@ -70,7 +75,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 	const backendRes = await fetch(`${BACKEND}/api/stream`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', Cookie: cookie },
+		headers: backendHeaders,
 		body: JSON.stringify(payload)
 	});
 
@@ -110,19 +115,21 @@ async function handleGenerateMode({
 	systemInstruction,
 	tools,
 	toolConfig,
-	cookie,
+	backendHeaders,
 	userPromptId,
 	docType,
 	formData,
+	memories,
 	emit,
 	encoder
 }: {
 	model: string;
 	contents: GeminiContent[];
 	systemInstruction: Record<string, unknown>;
+	memories: Record<string, string> | undefined;
 	tools: Record<string, unknown>[] | undefined;
 	toolConfig: Record<string, unknown> | undefined;
-	cookie: string;
+	backendHeaders: Record<string, string>;
 	userPromptId: string;
 	docType: string;
 	formData: Record<string, string>;
@@ -142,6 +149,7 @@ async function handleGenerateMode({
 					contents,
 					generationConfig: { maxOutputTokens: 8192 },
 					systemInstruction,
+					...(memories && { memories }),
 					userPromptId,
 					...(tools && { tools }),
 					...(toolConfig && { toolConfig })
@@ -149,7 +157,7 @@ async function handleGenerateMode({
 
 				const step1Res = await fetch(`${BACKEND}/api/generate`, {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json', Cookie: cookie },
+					headers: backendHeaders,
 					body: JSON.stringify(step1Payload)
 				});
 
@@ -230,13 +238,14 @@ async function handleGenerateMode({
 						contents: fullContents,
 						generationConfig: { maxOutputTokens: 65536 },
 						systemInstruction,
+						...(memories && { memories }),
 						userPromptId
 						// No tools — model should just generate the document now
 					};
 
 					const step3Res = await fetch(`${BACKEND}/api/stream`, {
 						method: 'POST',
-						headers: { 'Content-Type': 'application/json', Cookie: cookie },
+						headers: backendHeaders,
 						body: JSON.stringify(step3Payload)
 					});
 
@@ -302,12 +311,13 @@ async function handleGenerateMode({
 						contents,
 						generationConfig: { maxOutputTokens: 65536 },
 						systemInstruction: enrichedSystemInstruction,
+						...(memories && { memories }),
 						userPromptId
 					};
 
 					const fallbackRes = await fetch(`${BACKEND}/api/stream`, {
 						method: 'POST',
-						headers: { 'Content-Type': 'application/json', Cookie: cookie },
+						headers: backendHeaders,
 						body: JSON.stringify(fallbackPayload)
 					});
 
@@ -379,6 +389,12 @@ async function streamGeminiSSE(
 
 				try {
 					const chunk = JSON.parse(jsonStr);
+					if (chunk?.error) {
+						hasError = true;
+						controller.enqueue(emit('3', `Gemini API error: ${chunk.error}`));
+						continue;
+					}
+
 					const candidate =
 						chunk?.candidates?.[0] || chunk?.response?.candidates?.[0];
 					const parts = candidate?.content?.parts || [];
