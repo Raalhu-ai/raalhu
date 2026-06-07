@@ -256,13 +256,20 @@ export async function importChatHistory(payload: unknown): Promise<ChatHistoryIm
 // --- Agent mode persistence ---
 
 export async function saveAgentMessages(sessionId: string, messages: any[]): Promise<void> {
-	// Strip Blob URLs from artifact steps before serializing (they're not valid across sessions)
-	const cleaned = messages.map((m: any) => ({
-		...m,
-		steps: m.steps?.map((s: any) =>
-			s.kind === 'artifact' ? { ...s, url: '' } : s
-		)
-	}));
+	// Strip Blob URLs from artifact steps before serializing (they're not valid across sessions).
+	// Strip inline image data to avoid bloating IndexedDB — keep only a count so the UI
+	// can render a placeholder paperclip on restore.
+	const cleaned = messages.map((m: any) => {
+		const count = m.images?.length ?? m.imageCount;
+		const { images: _omit, ...rest } = m;
+		return {
+			...rest,
+			...(count ? { imageCount: count } : {}),
+			steps: m.steps?.map((s: any) =>
+				s.kind === 'artifact' ? { ...s, url: '' } : s
+			)
+		};
+	});
 	await db.sessions.update(sessionId, {
 		agentMessages: JSON.stringify(cleaned),
 		updatedAt: Date.now()

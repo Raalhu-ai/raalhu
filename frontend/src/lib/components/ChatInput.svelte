@@ -38,20 +38,22 @@
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
 		placeholder = 'މެސެޖެއް ލިޔުއްވާ...',
-			onSend,
-			disabled = false,
-			autofocus = false,
-			modelProvider = 'code-assist',
-		}: {
-			value: string;
-			selectedModel?: string;
-			models?: string[];
-			placeholder?: string;
-			onSend: (data: ChatInputSendData) => void;
-			disabled?: boolean;
-			autofocus?: boolean;
-			modelProvider?: 'code-assist' | 'gemini-api';
-		} = $props();
+		onSend,
+		disabled = false,
+		autofocus = false,
+		incognito = false,
+		modelProvider = 'code-assist',
+	}: {
+		value: string;
+		selectedModel?: string;
+		models?: string[];
+		placeholder?: string;
+		onSend: (data: ChatInputSendData) => void;
+		disabled?: boolean;
+		autofocus?: boolean;
+		incognito?: boolean;
+		modelProvider?: 'code-assist' | 'gemini-api';
+	} = $props();
 
 	let files = $state<AttachedFile[]>([]);
 	let pastedContent = $state<PastedContent[]>([]);
@@ -345,10 +347,10 @@
 	ondrop={onDrop}
 >
 	<!-- Main container -->
-	<div class="flex flex-col rounded-2xl border border-border bg-card
+	<div class="flex flex-col rounded-2xl border bg-card
 		shadow-sm hover:shadow-md focus-within:shadow-md
-		focus-within:border-ring/50
-		transition-all duration-200">
+		transition-all duration-200
+		{incognito ? 'border-dashed border-ring/60 focus-within:border-ring' : 'border-border focus-within:border-ring/50'}">
 
 		<div class="flex flex-col px-3 pt-3 pb-3 gap-2">
 			<!-- Attachments row -->

@@ -31,6 +31,7 @@
 	import { listProjects, createProject as createProjectStore, getProject, verifyFilePermission } from '$lib/project-store';
 	import type { AgentMessage } from '$lib/agent/types';
 	import type { ProjectContext } from '$lib/project-context';
+	import type { AttachedFile, ChatInputSendData } from '$lib/components/ChatInput.svelte';
 
 	// --- App state ---
 	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
@@ -51,6 +52,7 @@
 	// --- Agent state ---
 	let agentInitialMessages = $state<AgentMessage[]>([]);
 	let pendingUserMessage = $state('');
+	let pendingUserFiles = $state<AttachedFile[]>([]);
 	let activeProjectContext = $state<ProjectContext | undefined>(undefined);
 
 	// --- Session history ---
@@ -267,11 +269,14 @@
 	}
 
 	// --- Dashboard send message → start agent session ---
-	async function onDashboardSendMessage(text: string) {
+	async function onDashboardSendMessage(data: ChatInputSendData | string) {
+		const text = typeof data === 'string' ? data : data.message.trim();
+		const files = typeof data === 'string' ? [] : data.files;
 		const sessionId = crypto.randomUUID();
 		activeSessionId = sessionId;
 		agentInitialMessages = [];
 		pendingUserMessage = text;
+		pendingUserFiles = files;
 
 		// Incognito mode: skip project context and skip session persistence entirely
 		if (incognitoActive) {
@@ -336,6 +341,7 @@
 		activeProjectContext = undefined;
 		agentInitialMessages = [];
 		pendingUserMessage = '';
+		pendingUserFiles = [];
 		creatingProject = false;
 		creatingArtifact = false;
 		selectedInspirationId = null;
@@ -505,11 +511,11 @@
 			<!-- Raalhu icon (normal mode only, desktop only) -->
 			{#if !incognitoActive}
 			<button
-				class="hidden lg:block absolute top-3 left-3 z-30 p-1.5 rounded-lg group/logo transition-opacity duration-200 opacity-60 hover:opacity-90"
+				class="block absolute top-3 end-3 lg:end-auto lg:start-3 z-30 p-1.5 rounded-lg group/logo transition-opacity duration-200 opacity-60 hover:opacity-90"
 				onclick={() => (incognitoActive = true)}
 			>
 				<div class="relative">
-					<span dir="rtl" class="thaana pointer-events-none absolute top-1/2 -translate-y-1/2 left-full ml-2 px-2 py-1 text-xs text-foreground bg-card border border-border rounded-md
+					<span dir="rtl" class="thaana pointer-events-none absolute top-1/2 -translate-y-1/2 right-full mr-2 px-2 py-1 text-xs text-foreground bg-card border border-border rounded-md
 						opacity-0 group-hover/logo:opacity-100 transition-opacity duration-150 whitespace-nowrap shadow-sm">
 						ސިއްރު
 					</span>
@@ -640,6 +646,7 @@
 						sessionId={activeSessionId}
 						initialMessages={agentInitialMessages}
 						initialUserMessage={pendingUserMessage}
+						initialUserFiles={pendingUserFiles}
 						title={activeSessionTitle}
 						projectContext={activeProjectContext}
 						onRename={(newTitle) => activeSessionId && handleRename(activeSessionId, newTitle)}
