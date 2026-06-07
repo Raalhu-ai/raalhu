@@ -10,14 +10,17 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	const cookie = request.headers.get('cookie') || '';
+	const geminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		Cookie: cookie
+	};
+	if (geminiApiKey) headers['X-Gemini-API-Key'] = geminiApiKey;
 
 	try {
 		const res = await fetch(`${BACKEND}/api/generate`, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Cookie: cookie
-			},
+			headers,
 			body: JSON.stringify({
 				model: 'gemini-2.5-flash',
 				contents: [

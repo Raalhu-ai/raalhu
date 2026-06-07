@@ -10,18 +10,20 @@
 	let {
 		userName = '',
 		onSendMessage,
-		selectedModel = $bindable('gemini-3-flash-preview'),
-		models = [],
-		activeProject = null,
-		incognito = false
-	}: {
+			selectedModel = $bindable('gemini-3-flash-preview'),
+			models = [],
+			modelProvider = 'code-assist',
+			activeProject = null,
+			incognito = false
+		}: {
 		userName: string;
 		onSendMessage: (text: string) => void;
-		selectedModel?: string;
-		models?: string[];
-		activeProject?: Project | null;
-		incognito?: boolean;
-	} = $props();
+			selectedModel?: string;
+			models?: string[];
+			modelProvider?: 'code-assist' | 'gemini-api';
+			activeProject?: Project | null;
+			incognito?: boolean;
+		} = $props();
 
 	const iconMap: Record<string, typeof FileText> = {
 		FileText,
@@ -80,11 +82,12 @@
 	<div class="w-full max-w-2xl mb-6 animate-fade-in-up" style="animation-delay: 150ms">
 		<ChatInput
 			bind:value={inputValue}
-			bind:selectedModel
-			{models}
-			onSend={handleSend}
-			autofocus={true}
-		/>
+				bind:selectedModel
+				{models}
+				{modelProvider}
+				onSend={handleSend}
+				autofocus={true}
+			/>
 		{#if incognito}
 			<p class="thaana text-muted-foreground/80 text-xs text-center mt-3 max-w-xl mx-auto leading-relaxed">
 				ސިއްރު ޗެޓްތައް ރައްކާ ނުކުރެވޭ، ހިސްޓްރީއަށް ނާޅާ، އަދި މޮޑެލް ތަމްރީނުކުރުމަށް ބޭނުމެއް ނުކުރޭ.

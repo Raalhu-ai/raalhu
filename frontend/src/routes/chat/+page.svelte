@@ -3,7 +3,9 @@
 	import { Chat, type Message } from '@ai-sdk/svelte';
 	import { marked } from 'marked';
 	import { fetchMe, setupCodeAssist, logout } from '$lib/api';
-	import { Loader2, Send, Plus, LogOut, Coffee } from 'lucide-svelte';
+	import { getGeminiApiHeaders, setModelProvider, type ModelProvider } from '$lib/gemini-api';
+	import { loadSettings, type Settings } from '$lib/settings';
+	import { Loader2, Send, Plus, LogOut, Coffee, KeyRound, Sparkles } from 'lucide-svelte';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -26,6 +28,7 @@
 	let overlayText = $state('Loading...');
 	let messagesEl = $state<HTMLDivElement | undefined>();
 	let formEl = $state<HTMLFormElement | undefined>();
+	let modelProvider = $state<ModelProvider>('code-assist');
 
 	const chat = new Chat({
 		api: '/api/chat',
@@ -43,16 +46,34 @@
 		});
 	});
 
+	onMount(() => {
+		function syncProvider(settings = loadSettings()) {
+			modelProvider =
+				settings.modelProvider === 'gemini-api' &&
+				settings.geminiApiKeyStatus === 'valid' &&
+				!!settings.geminiApiKey.trim()
+					? 'gemini-api'
+					: 'code-assist';
+		}
+
+		syncProvider();
+		const onSettingsChanged = (event: Event) => {
+			syncProvider((event as CustomEvent<Settings>).detail);
+		};
+		window.addEventListener('mogger-settings-changed', onSettingsChanged);
+		return () => window.removeEventListener('mogger-settings-changed', onSettingsChanged);
+	});
+
 	onMount(async () => {
 		const user = await fetchMe();
 		if (!user) {
 			window.location.href = '/auth/login';
 			return;
 		}
-		if (!user.project) {
-			overlayText = 'Setting up your Gemini project...';
-			try {
-				await setupCodeAssist();
+			if (!user.project) {
+				overlayText = 'Setting up your Gemini project...';
+				try {
+					await setupCodeAssist();
 			} catch (err: any) {
 				overlayText = 'Setup failed: ' + (err.message || 'Unknown error');
 				return;
@@ -62,7 +83,11 @@
 	});
 
 	function onFormSubmit(e: SubmitEvent) {
-		chat.handleSubmit(e);
+		const globalMemory = loadSettings().memories.trim();
+		chat.handleSubmit(e, {
+			headers: getGeminiApiHeaders(),
+			body: globalMemory ? { memories: { global: globalMemory } } : undefined
+		});
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
@@ -83,6 +108,11 @@
 		window.location.href = '/auth/login';
 	}
 
+	function switchToProxy() {
+		setModelProvider('code-assist');
+		modelProvider = 'code-assist';
+	}
+
 	// Only show user-visible messages (skip system prompt pair)
 	const visibleMessages = $derived(chat.messages.filter((m) => !m.id.startsWith('sys-')));
 </script>
@@ -96,12 +126,27 @@
 	<div class="flex flex-col h-screen">
 		<!-- Header -->
 		<header class="flex items-center justify-between px-5 py-3 border-b border-border bg-card shrink-0">
-			<div class="flex items-center gap-2">
-				<Coffee class="w-5 h-5 text-primary" />
-				<h1 class="thaana-heading text-lg font-medium text-primary">ތާނަ ޖީޕީޓީ</h1>
-			</div>
-			<div class="flex gap-2">
-				<button
+				<div class="flex items-center gap-2">
+					<Coffee class="w-5 h-5 text-primary" />
+					<h1 class="thaana-heading text-lg font-medium text-primary">ތާނަ ޖީޕީޓީ</h1>
+				</div>
+				<div class="flex gap-2">
+					<div
+						class="thaana inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border
+							{modelProvider === 'gemini-api'
+								? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+								: 'border-border text-muted-foreground'}"
+					>
+						{#if modelProvider === 'gemini-api'}
+							<KeyRound class="w-3 h-3" />
+							BYOK
+							<button type="button" onclick={switchToProxy} class="ms-1 underline">Proxy</button>
+						{:else}
+							<Sparkles class="w-3 h-3" />
+							ޕްރޮކްސީ
+						{/if}
+					</div>
+					<button
 					onclick={newChat}
 					class="flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted-foreground
 						border border-border rounded-lg

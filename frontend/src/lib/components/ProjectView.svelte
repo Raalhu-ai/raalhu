@@ -23,19 +23,21 @@
 		projectId,
 		onBack,
 		onStartChat,
-		onOpenSession,
-		selectedModel = $bindable('gemini-3-flash-preview'),
-		models = [],
-		onRefreshProjects = () => {}
-	}: {
+			onOpenSession,
+			selectedModel = $bindable('gemini-3-flash-preview'),
+			models = [],
+			modelProvider = 'code-assist',
+			onRefreshProjects = () => {}
+		}: {
 		projectId: string;
 		onBack: () => void;
-		onStartChat: (text: string) => void;
+		onStartChat: (text: string) => void | Promise<void>;
 		onOpenSession: (id: string) => void;
-		selectedModel?: string;
-		models?: string[];
-		onRefreshProjects?: () => void;
-	} = $props();
+			selectedModel?: string;
+			models?: string[];
+			modelProvider?: 'code-assist' | 'gemini-api';
+			onRefreshProjects?: () => void;
+		} = $props();
 
 	let project = $state<Project | null>(null);
 	let sessions = $state<ChatSession[]>([]);
@@ -143,10 +145,15 @@
 	}
 
 	// Send message
-	function handleSend(data: ChatInputSendData) {
+	async function handleSend(data: ChatInputSendData) {
 		const text = data.message.trim();
 		if (!text) return;
-		onStartChat(text);
+		if (memorySaveTimer) {
+			clearTimeout(memorySaveTimer);
+			memorySaveTimer = null;
+			await updateProjectMemory(projectId, memory);
+		}
+		await onStartChat(text);
 	}
 </script>
 
@@ -213,11 +220,12 @@
 						<div>
 							<ChatInput
 								bind:value={inputValue}
-								bind:selectedModel
-								{models}
-								onSend={handleSend}
-								placeholder="ޖަވާބު..."
-							/>
+									bind:selectedModel
+									{models}
+									{modelProvider}
+									onSend={handleSend}
+									placeholder="ޖަވާބު..."
+								/>
 						</div>
 
 						<!-- Hint text -->
@@ -249,15 +257,25 @@
 					<!-- Right column: memory + instructions + files -->
 					<div class="w-full lg:w-96 shrink-0 border border-border rounded-2xl flex flex-col lg:mt-4">
 
-						<!-- Memory section (temporarily commented out)
+						<!-- Memory section -->
 						<div class="px-5 py-4 mt-1">
 							<div class="flex flex-col gap-0.5">
 								<div class="h-6 flex items-center justify-between gap-4 mb-1">
 									<h3 class="thaana text-sm font-semibold text-foreground">ހަނދާންތައް</h3>
-									<div class="inline-flex items-center gap-1 px-2 py-0.5 text-muted-foreground rounded-md border border-border text-[11px] leading-none">
-										<Lock class="w-3.5 h-3.5 shrink-0" />
-										<span class="thaana translate-y-[3px]">ހަމައެކަނި ތިބާ</span>
-									</div>
+									{#if !editingMemory}
+										<div class="flex items-center gap-2">
+											<div class="inline-flex items-center gap-1 px-2 py-0.5 text-muted-foreground rounded-md border border-border text-[11px] leading-none">
+												<Lock class="w-3.5 h-3.5 shrink-0" />
+												<span class="thaana translate-y-[3px]">ހަމައެކަނި ތިބާ</span>
+											</div>
+											<button
+												onclick={() => { editingMemory = true; }}
+												class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors -me-2"
+											>
+												<Plus class="w-4 h-4" />
+											</button>
+										</div>
+									{/if}
 								</div>
 								{#if editingMemory}
 									<textarea
@@ -289,14 +307,13 @@
 									</button>
 								{:else}
 									<p class="thaana text-sm text-muted-foreground/40 mt-0.5">
-										ޕްރޮޖެކްޓް މެމޮރީ ދެތިން ޗެޓަށް ފަހު ފެންނާނެ.
+										މި ޕްރޮޖެކްޓަށް ޚާއްޞަ ހަނދާން ލިޔުމަށް މިތާ ފިތާލާ.
 									</p>
 								{/if}
 							</div>
 						</div>
 
 						<div class="h-[0.5px] w-full bg-border"></div>
-						-->
 
 						<!-- Instructions section -->
 						<div class="px-5 py-4 mt-1">

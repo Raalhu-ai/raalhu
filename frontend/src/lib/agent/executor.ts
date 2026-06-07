@@ -2,6 +2,7 @@ import type { PyodideSandbox } from './sandbox';
 import type { RecipeData } from './types';
 import { getSkillContent, SKILLS } from './skills/index';
 import { fetchWithRetry } from './retry';
+import { getGeminiApiHeaders } from '$lib/gemini-api';
 
 const MIME_TYPES: Record<string, string> = {
 	'.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -203,7 +204,7 @@ export async function executeToolCall(
 			try {
 				const res = await fetchWithRetry('/api/agent-generate', {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
+					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 					body: JSON.stringify({
 						model: 'gemini-3-flash-preview',
 						contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -333,7 +334,7 @@ export async function executeToolCall(
 			try {
 				const res = await fetchWithRetry('/api/agent-generate', {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
+					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 					body: JSON.stringify({
 						model: 'gemini-3-flash-preview',
 						contents: [{ role: 'user', parts: [{ text: query }] }],

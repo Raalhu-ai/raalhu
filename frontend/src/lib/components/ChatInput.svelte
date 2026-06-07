@@ -25,7 +25,7 @@
 </script>
 
 <script lang="ts">
-	import { Plus, ArrowUp, Archive, X, FileText, Loader2, Sparkles, Paperclip, Camera, Globe, Feather, Check } from 'lucide-svelte';
+		import { Plus, ArrowUp, Archive, X, FileText, Loader2, Sparkles, Paperclip, Camera, Globe, Feather, Check, KeyRound } from 'lucide-svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { modelDisplayName } from '$lib/modes';
 	import { Mic, Square } from 'lucide-svelte';
@@ -38,18 +38,20 @@
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
 		placeholder = 'މެސެޖެއް ލިޔުއްވާ...',
-		onSend,
-		disabled = false,
-		autofocus = false,
-	}: {
-		value: string;
-		selectedModel?: string;
-		models?: string[];
-		placeholder?: string;
-		onSend: (data: ChatInputSendData) => void;
-		disabled?: boolean;
-		autofocus?: boolean;
-	} = $props();
+			onSend,
+			disabled = false,
+			autofocus = false,
+			modelProvider = 'code-assist',
+		}: {
+			value: string;
+			selectedModel?: string;
+			models?: string[];
+			placeholder?: string;
+			onSend: (data: ChatInputSendData) => void;
+			disabled?: boolean;
+			autofocus?: boolean;
+			modelProvider?: 'code-assist' | 'gemini-api';
+		} = $props();
 
 	let files = $state<AttachedFile[]>([]);
 	let pastedContent = $state<PastedContent[]>([]);
@@ -436,8 +438,8 @@
 				</DropdownMenu.Root>
 
 				<!-- Model switcher -->
-				{#if models.length > 0}
-					<DropdownMenu.Root>
+					{#if models.length > 0}
+						<DropdownMenu.Root>
 						<DropdownMenu.Trigger
 							class="inline-flex items-center justify-center h-8 gap-1.5 px-2 rounded-lg
 								text-muted-foreground hover:text-foreground hover:bg-accent
@@ -458,10 +460,26 @@
 								{/each}
 							</DropdownMenu.RadioGroup>
 						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
+						</DropdownMenu.Root>
+					{/if}
 
-				<div class="flex-1"></div>
+					<span
+						class="thaana inline-flex items-center gap-1 h-8 px-2 rounded-lg border text-[10px] shrink-0
+							{modelProvider === 'gemini-api'
+								? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+								: 'border-border text-muted-foreground'}"
+						title={modelProvider === 'gemini-api' ? 'Gemini BYOK' : 'Code Assist proxy'}
+					>
+						{#if modelProvider === 'gemini-api'}
+							<KeyRound class="w-3 h-3" />
+							BYOK
+						{:else}
+							<Sparkles class="w-3 h-3" />
+							ޕްރޮކްސީ
+						{/if}
+					</span>
+
+					<div class="flex-1"></div>
 
 				<!-- Active modifiers pills -->
 				{#if webSearchEnabled || activeStyle !== 'normal'}

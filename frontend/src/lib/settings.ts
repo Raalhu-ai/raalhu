@@ -2,6 +2,10 @@ export interface Settings {
 	theme: 'light' | 'dark' | 'system';
 	fontSize: 'small' | 'medium' | 'large';
 	customInstructions: string;
+	memories: string;
+	geminiApiKey: string;
+	modelProvider: 'code-assist' | 'gemini-api';
+	geminiApiKeyStatus: 'untested' | 'valid' | 'invalid';
 }
 
 const STORAGE_KEY = 'mogger_settings';
@@ -9,7 +13,11 @@ const STORAGE_KEY = 'mogger_settings';
 const DEFAULTS: Settings = {
 	theme: 'dark',
 	fontSize: 'medium',
-	customInstructions: ''
+	customInstructions: '',
+	memories: '',
+	geminiApiKey: '',
+	modelProvider: 'code-assist',
+	geminiApiKeyStatus: 'untested'
 };
 
 const FONT_SIZES: Record<Settings['fontSize'], string> = {
@@ -28,6 +36,9 @@ export function loadSettings(): Settings {
 
 export function saveSettings(settings: Settings): void {
 	localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+	if (typeof window !== 'undefined') {
+		window.dispatchEvent(new CustomEvent('mogger-settings-changed', { detail: settings }));
+	}
 }
 
 let mediaQuery: MediaQueryList | null = null;

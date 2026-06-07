@@ -3,6 +3,7 @@ import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, 
 import { AGENT_TOOLS } from './tools';
 import { executeToolCall } from './executor';
 import { fetchWithRetry, TerminalQuotaError } from './retry';
+import { getGeminiApiHeaders } from '$lib/gemini-api';
 
 const MAX_TURNS = 15;
 
@@ -11,6 +12,11 @@ interface AgentLoopOptions {
 	contents: GeminiContent[];
 	systemInstruction: { role: string; parts: [{ text: string }] };
 	sandbox: PyodideSandbox;
+	memories?: {
+		global?: string;
+		project?: string;
+		projectName?: string;
+	};
 }
 
 /** Accumulator for one SSE turn — populated by streamGeminiTurn */
@@ -62,6 +68,11 @@ async function* streamGeminiTurn(
 	acc: TurnAccumulator
 ): AsyncGenerator<AgentEvent> {
 	for await (const chunk of parseSSEStream(response)) {
+		if (chunk?.error) {
+			yield { type: 'error', message: `Gemini API error: ${chunk.error}` };
+			return;
+		}
+
 		const candidate = chunk?.candidates?.[0] || chunk?.response?.candidates?.[0];
 		if (!candidate) continue;
 
@@ -97,7 +108,7 @@ async function* streamGeminiTurn(
  * Yields AgentEvent objects for the UI to consume.
  */
 export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<AgentEvent> {
-	const { model, contents, systemInstruction, sandbox } = options;
+	const { model, contents, systemInstruction, sandbox, memories } = options;
 	// Mutate the passed contents array directly so the caller gets the full history
 	// (including tool call/response rounds and thoughtSignatures)
 	const history = contents;
@@ -112,6 +123,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			model,
 			contents: history,
 			systemInstruction,
+			...(memories && { memories }),
 			tools: AGENT_TOOLS,
 			toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
 			generationConfig: {
@@ -136,7 +148,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			const t0 = performance.now();
 			response = await fetchWithRetry('/api/agent-stream', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 				body: JSON.stringify(reqBody)
 			});
 			console.log(`[AgentLoop] Response status=${response.status} (${(performance.now() - t0).toFixed(0)}ms)`);

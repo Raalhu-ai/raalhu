@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles, Settings } from 'lucide-svelte';
+		import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles, Settings, KeyRound } from 'lucide-svelte';
 	import type { QuotaModel, User } from '$lib/api';
 	import type { ChatSession, Project } from '$lib/db';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -7,10 +7,11 @@
 
 	let {
 		selectedModel = $bindable('gemini-3-flash-preview'),
-		models,
-		quotas,
-		quotaLoading,
-		onRefreshQuota,
+			models,
+			quotas,
+			quotaLoading,
+			modelProvider = 'code-assist',
+			onRefreshQuota,
 		user,
 		onLogout,
 		onSettings = () => {},
@@ -32,10 +33,11 @@
 		showingArtifacts = false
 	}: {
 		selectedModel: string;
-		models: string[];
-		quotas: QuotaModel[];
-		quotaLoading: boolean;
-		onRefreshQuota: () => void;
+			models: string[];
+			quotas: QuotaModel[];
+			quotaLoading: boolean;
+			modelProvider?: 'code-assist' | 'gemini-api';
+			onRefreshQuota: () => void;
 		user: User | null;
 		onLogout: () => void;
 		onSettings?: () => void;
@@ -280,8 +282,23 @@
 
 	<!-- Bottom section: Model + Quota + User -->
 	<div class="shrink-0 flex flex-col gap-3 border-t border-border pt-3 px-2">
-		<!-- Quota (bar is the popover trigger) -->
-		<DropdownMenu.Root>
+			<!-- Quota (bar is the popover trigger) -->
+			<div
+				class="thaana flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs
+					{modelProvider === 'gemini-api'
+						? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+						: 'border-border text-muted-foreground'}"
+			>
+				{#if modelProvider === 'gemini-api'}
+					<KeyRound class="w-3.5 h-3.5 shrink-0" />
+					<span class="truncate">Gemini BYOK</span>
+				{:else}
+					<Sparkles class="w-3.5 h-3.5 shrink-0" />
+					<span class="truncate">Code Assist ޕްރޮކްސީ</span>
+				{/if}
+			</div>
+
+			<DropdownMenu.Root>
 			<DropdownMenu.Trigger
 				class="flex flex-col gap-1 w-full cursor-pointer rounded-lg py-1.5
 					hover:bg-accent/50 transition-colors duration-150"
@@ -299,14 +316,18 @@
 						{Math.round(selectedPct)}%
 					</span>
 				</div>
-				{#if countdownText}
-					<div class="thaana flex items-center gap-1 text-[10px] text-muted-foreground/70 tabular-nums">
-						<span>ރީސެޓް:</span>
-						<span>{countdownText}</span>
-					</div>
-				{/if}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content side="top" align="end" class="w-64 p-3">
+					{#if countdownText}
+						<div class="thaana flex items-center gap-1 text-[10px] text-muted-foreground/70 tabular-nums">
+							<span>{modelProvider === 'gemini-api' ? 'ޕްރޮކްސީ ރީސެޓް:' : 'ރީސެޓް:'}</span>
+							<span>{countdownText}</span>
+						</div>
+					{:else if modelProvider === 'gemini-api'}
+						<div class="thaana text-[10px] text-muted-foreground/70">
+							ޕްރޮކްސީ ފޯލްބެކް ކޯޓާ
+						</div>
+					{/if}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content side="top" align="end" class="w-64 p-3">
 				<div class="flex items-center justify-between mb-2.5">
 					<button
 						onclick={onRefreshQuota}
@@ -318,7 +339,9 @@
 						<RefreshCw class="w-2.5 h-2.5 {quotaLoading ? 'animate-spin' : ''}" />
 						ރީފްރެޝް
 					</button>
-					<span class="thaana text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ކޯޓާ</span>
+						<span class="thaana text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+							{modelProvider === 'gemini-api' ? 'ޕްރޮކްސީ ފޯލްބެކް ކޯޓާ' : 'ކޯޓާ'}
+						</span>
 				</div>
 
 				{#if quotas.length > 0}
