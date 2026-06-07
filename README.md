@@ -79,6 +79,8 @@ bun build:extension
 | Desktop    | electron-builder: `bun --filter @raalhu/desktop package`             |
 | Extension  | `bun build:extension` → load `apps/extension/dist/` in Chrome        |
 
+For backend deploys, use `bun run deploy` from `server/`; `bun deploy` is a reserved Bun command and will not run the package script. If Wrangler returns Cloudflare API error `10000`, refresh Cloudflare authentication with `bunx wrangler login` or set valid local `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` values before deploying again.
+
 ## Environment Variables
 
 Each app has a `.env.example` — copy and fill in your values:

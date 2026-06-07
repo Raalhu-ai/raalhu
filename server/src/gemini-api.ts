@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai/web';
+import { GoogleGenAI } from '@google/genai';
 
 type GeminiRequestBody = {
 	model?: string;
