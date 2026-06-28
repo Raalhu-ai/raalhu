@@ -42,7 +42,7 @@
 		disabled = false,
 		autofocus = false,
 		incognito = false,
-		modelProvider = 'code-assist',
+		modelProvider = 'proxy',
 	}: {
 		value: string;
 		selectedModel?: string;
@@ -52,7 +52,7 @@
 		disabled?: boolean;
 		autofocus?: boolean;
 		incognito?: boolean;
-		modelProvider?: 'code-assist' | 'gemini-api';
+		modelProvider?: 'proxy' | 'ai-sdk';
 	} = $props();
 
 	let files = $state<AttachedFile[]>([]);
@@ -467,12 +467,12 @@
 
 					<span
 						class="thaana inline-flex items-center gap-1 h-8 px-2 rounded-lg border text-[10px] shrink-0
-							{modelProvider === 'gemini-api'
+							{modelProvider === 'ai-sdk'
 								? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
 								: 'border-border text-muted-foreground'}"
-						title={modelProvider === 'gemini-api' ? 'Gemini BYOK' : 'Code Assist proxy'}
+						title={modelProvider === 'ai-sdk' ? 'AI SDK BYOK' : 'Code Assist proxy'}
 					>
-						{#if modelProvider === 'gemini-api'}
+						{#if modelProvider === 'ai-sdk'}
 							<KeyRound class="w-3 h-3" />
 							BYOK
 						{:else}

@@ -34,7 +34,7 @@
 	let {
 			model = $bindable('gemini-3-flash-preview'),
 			models = [],
-			modelProvider = 'code-assist',
+			modelProvider = 'proxy',
 			quotaExhausted = false,
 		sessionId,
 		initialMessages = [],
@@ -52,7 +52,7 @@
 		}: {
 			model: string;
 			models?: string[];
-			modelProvider?: 'code-assist' | 'gemini-api';
+			modelProvider?: 'proxy' | 'ai-sdk';
 			quotaExhausted?: boolean;
 		sessionId: string;
 		initialMessages?: AgentMessage[];
@@ -413,6 +413,19 @@
 		}
 	});
 
+	onMount(() => {
+		const syncByokFallbackNotice = () => {
+			const settings = loadSettings();
+			if (settings.lastByokError && settings.activeModelModule === 'proxy') {
+				byokFailureMessage = `BYOK failed and the request was retried through proxy. ${settings.lastByokError}`;
+			}
+		};
+		const onSettingsChanged = () => syncByokFallbackNotice();
+		window.addEventListener('mogger-settings-changed', onSettingsChanged);
+		syncByokFallbackNotice();
+		return () => window.removeEventListener('mogger-settings-changed', onSettingsChanged);
+	});
+
 	onDestroy(() => {
 		console.log('[AgentChat] Destroying');
 		stopVerbCycle();
@@ -646,7 +659,7 @@
 						break;
 
 						case 'error':
-							if (modelProvider === 'gemini-api') {
+							if (modelProvider === 'ai-sdk') {
 								byokFailureMessage = event.message;
 							}
 							assistantMsg.content =
@@ -661,7 +674,7 @@
 			flushUIUpdate();
 			} catch (err: any) {
 				console.error('[AgentChat] Agent loop error:', err);
-				if (modelProvider === 'gemini-api') {
+				if (modelProvider === 'ai-sdk') {
 					byokFailureMessage = err.message || 'Gemini BYOK request failed';
 				}
 				assistantMsg.content =

@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { db, type ChatSession, type SerializedMessage } from '$lib/db';
-import { getGeminiApiHeaders } from '$lib/gemini-api';
+import { fetchWithModelFallback } from '$lib/gemini-api';
 import type { Message } from '@ai-sdk/svelte';
 // --- Serialization helpers ---
 
@@ -329,11 +329,11 @@ export async function loadAgentFS(
 
 export async function fetchAITitle(message: string): Promise<string> {
 	try {
-		const res = await fetch('/api/title', {
+		const res = await fetchWithModelFallback('/api/title', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ message })
-		});
+		}, 'gemini-2.5-flash');
 		if (!res.ok) return '';
 		const { title } = await res.json();
 		return (title || '').trim();

@@ -9,7 +9,7 @@ import {
 	setSessionCookie,
 	clearSessionCookie
 } from './session';
-import { generateWithGeminiApi, streamWithGeminiApi } from './gemini-api';
+import { generateModel, streamModel, type AiProvider, type ModelRoute } from './model-providers';
 
 // --- Types ---
 
@@ -45,7 +45,14 @@ app.use(
 	cors({
 		origin: (origin) => origin || 'http://localhost:5173',
 		credentials: true,
-		allowHeaders: ['Content-Type', 'X-Session', 'X-Gemini-API-Key'],
+		allowHeaders: [
+			'Content-Type',
+			'X-Session',
+			'X-Model-Module',
+			'X-AI-Provider',
+			'X-AI-API-Key',
+			'X-Gemini-API-Key'
+		],
 		exposeHeaders: ['Set-Cookie']
 	})
 );
@@ -229,6 +236,27 @@ function withMemorySystemInstruction<T extends Record<string, any>>(body: T): T 
 		...body,
 		systemInstruction: appendMemoriesToSystemInstruction(body.systemInstruction, body.memories)
 	} as T;
+}
+
+function isAiProvider(value: string | undefined): value is AiProvider {
+	return value === 'google' || value === 'openai' || value === 'anthropic';
+}
+
+function resolveModelRoute(c: Context<Env>): ModelRoute {
+	const moduleHeader = c.req.header('X-Model-Module')?.trim();
+	const providerHeader = c.req.header('X-AI-Provider')?.trim();
+	const aiApiKey = c.req.header('X-AI-API-Key')?.trim();
+	const legacyGeminiApiKey = c.req.header('X-Gemini-API-Key')?.trim();
+
+	if ((moduleHeader === 'ai-sdk' || aiApiKey) && aiApiKey && isAiProvider(providerHeader)) {
+		return { module: 'ai-sdk', provider: providerHeader, apiKey: aiApiKey };
+	}
+
+	if (legacyGeminiApiKey) {
+		return { module: 'ai-sdk', provider: 'google', apiKey: legacyGeminiApiKey };
+	}
+
+	return { module: 'proxy' };
 }
 
 // ==================== AUTH ROUTES ====================
@@ -472,57 +500,17 @@ app.post('/api/setup', authMiddleware, async (c) => {
 
 app.post('/api/generate', authMiddleware, async (c) => {
 	const session = c.get('session');
-	const geminiApiKey = c.req.header('X-Gemini-API-Key')?.trim();
+	const route = resolveModelRoute(c);
 
 	const rawBody = await c.req.json();
 	const hasMemories = !!buildMemoryBlock((rawBody as any).memories);
 	const body = withMemorySystemInstruction(rawBody as any);
-	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } =
-		body;
+	const { model, tools } = body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[generate] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} provider=${geminiApiKey ? 'gemini-api' : 'code-assist'}`);
+	console.log(`[generate] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} module=${route.module}${route.provider ? ` provider=${route.provider}` : ''}`);
 
 	try {
-		if (geminiApiKey) {
-			const data = await generateWithGeminiApi(geminiApiKey, body);
-			return c.json(data);
-		}
-
-		const { accessToken, project } = session;
-		if (!project) return c.json({ error: 'No project set up' }, 400);
-
-		const apiRes = await fetch(`${CODE_ASSIST_BASE}:generateContent`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				project,
-				model: model || 'gemini-3-flash-preview',
-				...(userPromptId && { user_prompt_id: userPromptId }),
-				request: {
-					contents,
-					generationConfig: generationConfig || { maxOutputTokens: 8192 },
-					...(tools && { tools }),
-					...(systemInstruction && { systemInstruction }),
-					...(toolConfig && { toolConfig })
-				}
-			})
-		});
-
-		if (!apiRes.ok) {
-			const errBody = await apiRes.text();
-			// Pass through Google's error body directly (not wrapped in JSON)
-			// so the client can parse retry-after patterns from 429 responses
-			return new Response(errBody, {
-				status: apiRes.status,
-				headers: { 'Content-Type': 'text/plain' }
-			});
-		}
-
-		const data = await apiRes.json();
-		return c.json(data);
+		return await generateModel(route, body, session);
 	} catch (err: any) {
 		console.error('Generate error:', err);
 		return c.json({ error: 'Generate failed', details: err.message }, 500);
@@ -531,74 +519,17 @@ app.post('/api/generate', authMiddleware, async (c) => {
 
 app.post('/api/stream', authMiddleware, async (c) => {
 	const session = c.get('session');
-	const geminiApiKey = c.req.header('X-Gemini-API-Key')?.trim();
+	const route = resolveModelRoute(c);
 
 	const rawBody = await c.req.json();
 	const hasMemories = !!buildMemoryBlock((rawBody as any).memories);
 	const body = withMemorySystemInstruction(rawBody as any);
-	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } =
-		body;
+	const { model, tools } = body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[stream] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} provider=${geminiApiKey ? 'gemini-api' : 'code-assist'}`);
+	console.log(`[stream] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} module=${route.module}${route.provider ? ` provider=${route.provider}` : ''}`);
 
 	try {
-		if (geminiApiKey) {
-			const stream = await streamWithGeminiApi(geminiApiKey, body);
-			return new Response(stream, {
-				headers: {
-					'Content-Type': 'text/event-stream',
-					'Cache-Control': 'no-cache',
-					Connection: 'keep-alive',
-					'X-Accel-Buffering': 'no'
-				}
-			});
-		}
-
-		const { accessToken, project } = session;
-		if (!project) return c.json({ error: 'No project set up' }, 400);
-
-		const apiRes = await fetch(
-			`${CODE_ASSIST_BASE}:streamGenerateContent?alt=sse`,
-			{
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					project,
-					model: model || 'gemini-3-flash-preview',
-					...(userPromptId && { user_prompt_id: userPromptId }),
-					request: {
-						contents,
-						generationConfig: generationConfig || { maxOutputTokens: 8192 },
-						...(tools && { tools }),
-						...(systemInstruction && { systemInstruction }),
-						...(toolConfig && { toolConfig })
-					}
-				})
-			}
-		);
-
-		if (!apiRes.ok) {
-			const errBody = await apiRes.text();
-			// Pass through Google's error body directly (not wrapped in JSON)
-			// so the client can parse retry-after patterns from 429 responses
-			return new Response(errBody, {
-				status: apiRes.status,
-				headers: { 'Content-Type': 'text/plain' }
-			});
-		}
-
-		// Stream SSE passthrough
-		return new Response(apiRes.body, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache',
-				Connection: 'keep-alive',
-				'X-Accel-Buffering': 'no'
-			}
-		});
+		return await streamModel(route, body, session);
 	} catch (err: any) {
 		console.error('Stream error:', err);
 		return c.json({ error: 'Stream failed', details: err.message }, 500);

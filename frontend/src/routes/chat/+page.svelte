@@ -3,7 +3,7 @@
 	import { Chat, type Message } from '@ai-sdk/svelte';
 	import { marked } from 'marked';
 	import { fetchMe, setupCodeAssist, logout } from '$lib/api';
-	import { getGeminiApiHeaders, setModelProvider, type ModelProvider } from '$lib/gemini-api';
+	import { getGeminiApiHeaders, switchToProxy as setProxyRoute, type ModelModule } from '$lib/gemini-api';
 	import { loadSettings, type Settings } from '$lib/settings';
 	import { Loader2, Send, Plus, LogOut, Coffee, KeyRound, Sparkles } from 'lucide-svelte';
 
@@ -28,7 +28,7 @@
 	let overlayText = $state('Loading...');
 	let messagesEl = $state<HTMLDivElement | undefined>();
 	let formEl = $state<HTMLFormElement | undefined>();
-	let modelProvider = $state<ModelProvider>('code-assist');
+	let modelProvider = $state<ModelModule>('proxy');
 
 	const chat = new Chat({
 		api: '/api/chat',
@@ -48,12 +48,7 @@
 
 	onMount(() => {
 		function syncProvider(settings = loadSettings()) {
-			modelProvider =
-				settings.modelProvider === 'gemini-api' &&
-				settings.geminiApiKeyStatus === 'valid' &&
-				!!settings.geminiApiKey.trim()
-					? 'gemini-api'
-					: 'code-assist';
+			modelProvider = settings.activeModelModule;
 		}
 
 		syncProvider();
@@ -85,7 +80,7 @@
 	function onFormSubmit(e: SubmitEvent) {
 		const globalMemory = loadSettings().memories.trim();
 		chat.handleSubmit(e, {
-			headers: getGeminiApiHeaders(),
+			headers: getGeminiApiHeaders('gemini-3-flash-preview'),
 			body: globalMemory ? { memories: { global: globalMemory } } : undefined
 		});
 	}
@@ -109,8 +104,8 @@
 	}
 
 	function switchToProxy() {
-		setModelProvider('code-assist');
-		modelProvider = 'code-assist';
+		setProxyRoute();
+		modelProvider = 'proxy';
 	}
 
 	// Only show user-visible messages (skip system prompt pair)
@@ -133,11 +128,11 @@
 				<div class="flex gap-2">
 					<div
 						class="thaana inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border
-							{modelProvider === 'gemini-api'
+							{modelProvider === 'ai-sdk'
 								? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
 								: 'border-border text-muted-foreground'}"
 					>
-						{#if modelProvider === 'gemini-api'}
+						{#if modelProvider === 'ai-sdk'}
 							<KeyRound class="w-3 h-3" />
 							BYOK
 							<button type="button" onclick={switchToProxy} class="ms-1 underline">Proxy</button>

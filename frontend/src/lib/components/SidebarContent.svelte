@@ -10,7 +10,7 @@
 			models,
 			quotas,
 			quotaLoading,
-			modelProvider = 'code-assist',
+			modelProvider = 'proxy',
 			onRefreshQuota,
 		user,
 		onLogout,
@@ -36,7 +36,7 @@
 			models: string[];
 			quotas: QuotaModel[];
 			quotaLoading: boolean;
-			modelProvider?: 'code-assist' | 'gemini-api';
+			modelProvider?: 'proxy' | 'ai-sdk';
 			onRefreshQuota: () => void;
 		user: User | null;
 		onLogout: () => void;
@@ -285,13 +285,13 @@
 			<!-- Quota (bar is the popover trigger) -->
 			<div
 				class="thaana flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs
-					{modelProvider === 'gemini-api'
+					{modelProvider === 'ai-sdk'
 						? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
 						: 'border-border text-muted-foreground'}"
 			>
-				{#if modelProvider === 'gemini-api'}
+				{#if modelProvider === 'ai-sdk'}
 					<KeyRound class="w-3.5 h-3.5 shrink-0" />
-					<span class="truncate">Gemini BYOK</span>
+					<span class="truncate">AI SDK BYOK</span>
 				{:else}
 					<Sparkles class="w-3.5 h-3.5 shrink-0" />
 					<span class="truncate">Code Assist ޕްރޮކްސީ</span>
@@ -318,10 +318,10 @@
 				</div>
 					{#if countdownText}
 						<div class="thaana flex items-center gap-1 text-[10px] text-muted-foreground/70 tabular-nums">
-							<span>{modelProvider === 'gemini-api' ? 'ޕްރޮކްސީ ރީސެޓް:' : 'ރީސެޓް:'}</span>
+							<span>{modelProvider === 'ai-sdk' ? 'ޕްރޮކްސީ ރީސެޓް:' : 'ރީސެޓް:'}</span>
 							<span>{countdownText}</span>
 						</div>
-					{:else if modelProvider === 'gemini-api'}
+					{:else if modelProvider === 'ai-sdk'}
 						<div class="thaana text-[10px] text-muted-foreground/70">
 							ޕްރޮކްސީ ފޯލްބެކް ކޯޓާ
 						</div>
@@ -340,7 +340,7 @@
 						ރީފްރެޝް
 					</button>
 						<span class="thaana text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-							{modelProvider === 'gemini-api' ? 'ޕްރޮކްސީ ފޯލްބެކް ކޯޓާ' : 'ކޯޓާ'}
+							{modelProvider === 'ai-sdk' ? 'ޕްރޮކްސީ ފޯލްބެކް ކޯޓާ' : 'ކޯޓާ'}
 						</span>
 				</div>
 

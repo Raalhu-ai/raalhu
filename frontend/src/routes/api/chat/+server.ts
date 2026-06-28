@@ -31,9 +31,15 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 	// Forward cookies for Express session auth
 	const cookie = request.headers.get('cookie') || '';
-	const geminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
+	const modelModule = request.headers.get('x-model-module')?.trim();
+	const aiProvider = request.headers.get('x-ai-provider')?.trim();
+	const aiApiKey = request.headers.get('x-ai-api-key')?.trim();
+	const legacyGeminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
 	const backendHeaders: Record<string, string> = { 'Content-Type': 'application/json', Cookie: cookie };
-	if (geminiApiKey) backendHeaders['X-Gemini-API-Key'] = geminiApiKey;
+	if (modelModule) backendHeaders['X-Model-Module'] = modelModule;
+	if (aiProvider) backendHeaders['X-AI-Provider'] = aiProvider;
+	if (aiApiKey) backendHeaders['X-AI-API-Key'] = aiApiKey;
+	if (legacyGeminiApiKey && !aiApiKey) backendHeaders['X-Gemini-API-Key'] = legacyGeminiApiKey;
 
 	const isGenerateMode = modeId === 'generate' && !!formData?.documentType;
 	const isSearchMode = modeId === 'research' || modeId === 'web_search';
