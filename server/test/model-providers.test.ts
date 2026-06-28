@@ -1,7 +1,57 @@
 import { describe, expect, test } from 'bun:test';
-import { normalizeGeminiFunctionSchemaForAiSdk } from '../src/model-providers';
+import { asSchema } from 'ai';
+import { AGENT_TOOLS } from '../../frontend/src/lib/agent/tools';
+import {
+	geminiFunctionParametersToAiSdkInputSchema,
+	normalizeGeminiFunctionSchemaForAiSdk
+} from '../src/model-providers';
+
+const GEMINI_SCHEMA_TYPES = new Set(['OBJECT', 'STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'ARRAY', 'NULL']);
+
+function collectGeminiStyleTypes(schema: unknown): string[] {
+	if (Array.isArray(schema)) {
+		return schema.flatMap((item) => collectGeminiStyleTypes(item));
+	}
+	if (!schema || typeof schema !== 'object') return [];
+
+	const source = schema as Record<string, unknown>;
+	const matches: string[] = [];
+	const type = source.type;
+	if (typeof type === 'string' && GEMINI_SCHEMA_TYPES.has(type)) {
+		matches.push(type);
+	} else if (Array.isArray(type)) {
+		for (const item of type) {
+			if (typeof item === 'string' && GEMINI_SCHEMA_TYPES.has(item)) matches.push(item);
+		}
+	}
+
+	for (const value of Object.values(source)) {
+		matches.push(...collectGeminiStyleTypes(value));
+	}
+
+	return matches;
+}
+
+const agentFunctionDeclarations = AGENT_TOOLS.flatMap((tool) => tool.functionDeclarations || []);
 
 describe('normalizeGeminiFunctionSchemaForAiSdk', () => {
+	test('normalizes every current agent tool declaration recursively', () => {
+		expect(agentFunctionDeclarations.length).toBeGreaterThan(0);
+		expect(
+			agentFunctionDeclarations.some((declaration) =>
+				collectGeminiStyleTypes(declaration.parameters).length > 0
+			)
+		).toBe(true);
+
+		for (const declaration of agentFunctionDeclarations) {
+			const normalized = normalizeGeminiFunctionSchemaForAiSdk(declaration.parameters);
+
+			expect(normalized.type).toBe('object');
+			expect(normalized.required).toEqual(declaration.parameters.required);
+			expect(collectGeminiStyleTypes(normalized)).toEqual([]);
+		}
+	});
+
 	test('normalizes read_skill schema types and preserves enum and required fields', () => {
 		const schema = normalizeGeminiFunctionSchemaForAiSdk({
 			type: 'OBJECT',
@@ -21,6 +71,30 @@ describe('normalizeGeminiFunctionSchemaForAiSdk', () => {
 				name: {
 					type: 'string',
 					description: 'The skill name to load',
+					enum: ['docx', 'pdf']
+				}
+			},
+			required: ['name']
+		});
+	});
+
+	test('wraps normalized schemas for AI SDK tool inputSchema consumption', async () => {
+		const inputSchema = geminiFunctionParametersToAiSdkInputSchema({
+			type: 'OBJECT',
+			properties: {
+				name: {
+					type: 'STRING',
+					enum: ['docx', 'pdf']
+				}
+			},
+			required: ['name']
+		});
+
+		await expect(Promise.resolve(asSchema(inputSchema).jsonSchema)).resolves.toEqual({
+			type: 'object',
+			properties: {
+				name: {
+					type: 'string',
 					enum: ['docx', 'pdf']
 				}
 			},
