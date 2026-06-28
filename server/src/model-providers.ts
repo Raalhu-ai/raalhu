@@ -22,6 +22,62 @@ export type GeminiRequestBody = {
 };
 
 const CODE_ASSIST_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+const DEFAULT_TOOL_INPUT_SCHEMA = { type: 'object', properties: {} };
+const GEMINI_SCHEMA_TYPE_MAP: Record<string, string> = {
+	OBJECT: 'object',
+	STRING: 'string',
+	NUMBER: 'number',
+	INTEGER: 'integer',
+	BOOLEAN: 'boolean',
+	ARRAY: 'array',
+	NULL: 'null'
+};
+
+function isRecord(value: unknown): value is Record<string, any> {
+	return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeSchemaType(type: unknown): unknown {
+	if (typeof type === 'string') {
+		return GEMINI_SCHEMA_TYPE_MAP[type.toUpperCase()] || type;
+	}
+	if (Array.isArray(type)) {
+		return type.map((item) => normalizeSchemaType(item));
+	}
+	return type;
+}
+
+function normalizeSchemaValue(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeSchemaValue(item));
+	}
+	if (!isRecord(value)) return value;
+
+	const normalized: Record<string, any> = {};
+	for (const [key, childValue] of Object.entries(value)) {
+		if (key === 'type') {
+			normalized[key] = normalizeSchemaType(childValue);
+		} else if (key === 'properties' && isRecord(childValue)) {
+			normalized[key] = Object.fromEntries(
+				Object.entries(childValue).map(([propertyName, propertySchema]) => [
+					propertyName,
+					normalizeSchemaValue(propertySchema)
+				])
+			);
+		} else if (key === 'items' || key === 'anyOf' || key === 'oneOf' || key === 'allOf') {
+			normalized[key] = normalizeSchemaValue(childValue);
+		} else {
+			normalized[key] = childValue;
+		}
+	}
+
+	return normalized;
+}
+
+export function normalizeGeminiFunctionSchemaForAiSdk(parameters: unknown): Record<string, any> {
+	if (!isRecord(parameters)) return { ...DEFAULT_TOOL_INPUT_SCHEMA };
+	return normalizeSchemaValue(parameters) as Record<string, any>;
+}
 
 function textFromParts(parts: Record<string, any>[] | undefined): string {
 	return (parts || [])
@@ -68,7 +124,7 @@ function buildGoogleTools(googleProvider: ReturnType<typeof createGoogle>, tools
 	for (const declaration of declarations) {
 		toolMap[declaration.name] = {
 			description: declaration.description,
-			inputSchema: declaration.parameters || { type: 'object', properties: {} }
+			inputSchema: normalizeGeminiFunctionSchemaForAiSdk(declaration.parameters)
 		};
 	}
 
