@@ -203,12 +203,13 @@ export async function executeToolCall(
 			console.log(`[Executor] Web fetch: "${prompt.slice(0, 200)}"`);
 			try {
 				const res = await fetchWithModelFallback(
-					'/api/agent-generate',
+					'/api/generate',
 					{
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
 							model: 'gemini-3-flash-preview',
+							userPromptId: crypto.randomUUID(),
 							contents: [{ role: 'user', parts: [{ text: prompt }] }],
 							tools: [{ url_context: {} }]
 						})
@@ -338,12 +339,13 @@ export async function executeToolCall(
 			console.log(`[Executor] Web search: "${query}"`);
 			try {
 				const res = await fetchWithModelFallback(
-					'/api/agent-generate',
+					'/api/generate',
 					{
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
 							model: 'gemini-3-flash-preview',
+							userPromptId: crypto.randomUUID(),
 							contents: [{ role: 'user', parts: [{ text: query }] }],
 							tools: [{ google_search: {} }]
 						})

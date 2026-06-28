@@ -124,6 +124,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			model,
 			contents: history,
 			systemInstruction,
+			userPromptId: crypto.randomUUID(),
 			...(memories && { memories }),
 			tools: AGENT_TOOLS,
 			toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
@@ -135,7 +136,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			}
 		};
 
-		console.log(`[AgentLoop] POST /api/agent-stream`, {
+		console.log(`[AgentLoop] POST /api/stream`, {
 			model,
 			contentsLength: history.length,
 			lastRole: history[history.length - 1]?.role,
@@ -144,7 +145,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
 		async function requestTurnStream(): Promise<Response> {
 			const t0 = performance.now();
-			const response = await fetchWithModelFallback('/api/agent-stream', {
+			const response = await fetchWithModelFallback('/api/stream', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(reqBody)
