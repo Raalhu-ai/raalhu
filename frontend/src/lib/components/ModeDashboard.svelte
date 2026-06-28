@@ -12,7 +12,7 @@
 		onSendMessage,
 		selectedModel = $bindable('gemini-3-flash-preview'),
 		models = [],
-		modelProvider = 'code-assist',
+		modelProvider = 'proxy',
 		activeProject = null,
 		incognito = false
 	}: {
@@ -20,7 +20,7 @@
 		onSendMessage: (data: ChatInputSendData) => void;
 		selectedModel?: string;
 		models?: string[];
-		modelProvider?: 'code-assist' | 'gemini-api';
+		modelProvider?: 'proxy' | 'ai-sdk';
 		activeProject?: Project | null;
 		incognito?: boolean;
 	} = $props();

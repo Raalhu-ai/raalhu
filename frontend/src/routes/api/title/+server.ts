@@ -10,12 +10,18 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	const cookie = request.headers.get('cookie') || '';
-	const geminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
+	const modelModule = request.headers.get('x-model-module')?.trim();
+	const aiProvider = request.headers.get('x-ai-provider')?.trim();
+	const aiApiKey = request.headers.get('x-ai-api-key')?.trim();
+	const legacyGeminiApiKey = request.headers.get('x-gemini-api-key')?.trim();
 	const headers: Record<string, string> = {
 		'Content-Type': 'application/json',
 		Cookie: cookie
 	};
-	if (geminiApiKey) headers['X-Gemini-API-Key'] = geminiApiKey;
+	if (modelModule) headers['X-Model-Module'] = modelModule;
+	if (aiProvider) headers['X-AI-Provider'] = aiProvider;
+	if (aiApiKey) headers['X-AI-API-Key'] = aiApiKey;
+	if (legacyGeminiApiKey && !aiApiKey) headers['X-Gemini-API-Key'] = legacyGeminiApiKey;
 
 	try {
 		const res = await fetch(`${BACKEND}/api/generate`, {
@@ -36,6 +42,13 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		});
 
 		if (!res.ok) {
+			if (aiApiKey || legacyGeminiApiKey) {
+				const error = await res.text();
+				return new Response(error, {
+					status: res.status,
+					headers: { 'Content-Type': 'text/plain' }
+				});
+			}
 			return new Response(JSON.stringify({ title: '' }), {
 				headers: { 'Content-Type': 'application/json' }
 			});

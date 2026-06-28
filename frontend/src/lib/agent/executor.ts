@@ -2,7 +2,7 @@ import type { PyodideSandbox } from './sandbox';
 import type { RecipeData } from './types';
 import { getSkillContent, SKILLS } from './skills/index';
 import { fetchWithRetry } from './retry';
-import { getGeminiApiHeaders } from '$lib/gemini-api';
+import { fetchWithModelFallback } from '$lib/gemini-api';
 
 const MIME_TYPES: Record<string, string> = {
 	'.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -202,15 +202,20 @@ export async function executeToolCall(
 			const prompt = args.prompt as string;
 			console.log(`[Executor] Web fetch: "${prompt.slice(0, 200)}"`);
 			try {
-				const res = await fetchWithRetry('/api/agent-generate', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
-					body: JSON.stringify({
-						model: 'gemini-3-flash-preview',
-						contents: [{ role: 'user', parts: [{ text: prompt }] }],
-						tools: [{ url_context: {} }]
-					})
-				});
+				const res = await fetchWithModelFallback(
+					'/api/agent-generate',
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							model: 'gemini-3-flash-preview',
+							contents: [{ role: 'user', parts: [{ text: prompt }] }],
+							tools: [{ url_context: {} }]
+						})
+					},
+					'gemini-3-flash-preview',
+					fetchWithRetry
+				);
 
 				if (!res.ok) {
 					const errText = await res.text();
@@ -332,15 +337,20 @@ export async function executeToolCall(
 			const query = args.query as string;
 			console.log(`[Executor] Web search: "${query}"`);
 			try {
-				const res = await fetchWithRetry('/api/agent-generate', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
-					body: JSON.stringify({
-						model: 'gemini-3-flash-preview',
-						contents: [{ role: 'user', parts: [{ text: query }] }],
-						tools: [{ google_search: {} }]
-					})
-				});
+				const res = await fetchWithModelFallback(
+					'/api/agent-generate',
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							model: 'gemini-3-flash-preview',
+							contents: [{ role: 'user', parts: [{ text: query }] }],
+							tools: [{ google_search: {} }]
+						})
+					},
+					'gemini-3-flash-preview',
+					fetchWithRetry
+				);
 
 				if (!res.ok) {
 					const errText = await res.text();

@@ -15,7 +15,7 @@
 	import SettingsPage from '$lib/components/SettingsPage.svelte';
 	import { getInspirationCard } from '$lib/inspiration-cards';
 	import { applyTheme, applyFontSize, loadSettings, type Settings } from '$lib/settings';
-	import { setModelProvider, type ModelProvider } from '$lib/gemini-api';
+	import { switchToProxy, type ModelModule } from '$lib/gemini-api';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import type { ChatSession, Project } from '$lib/db';
 	import {
@@ -37,7 +37,7 @@
 	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
 	let user = $state<User | null>(null);
 	let selectedModel = $state('gemini-3-flash-preview');
-	let modelProvider = $state<ModelProvider>('code-assist');
+	let modelProvider = $state<ModelModule>('proxy');
 	let quotas = $state<QuotaModel[]>([]);
 	let quotaLoading = $state(false);
 	let setupLoading = $state(false);
@@ -93,10 +93,10 @@
 		quotas.find((q) => q.modelId === selectedModel)
 	);
 
-	const usingGeminiApi = $derived(modelProvider === 'gemini-api');
+	const usingAiSdk = $derived(modelProvider === 'ai-sdk');
 
 	const quotaExhausted = $derived(
-		!usingGeminiApi && selectedModelQuota ? (selectedModelQuota.remainingFraction ?? 0) < 0.05 : false
+		!usingAiSdk && selectedModelQuota ? (selectedModelQuota.remainingFraction ?? 0) < 0.05 : false
 	);
 
 	// --- Init ---
@@ -107,12 +107,7 @@
 
 	onMount(() => {
 		function syncProvider(settings = loadSettings()) {
-			modelProvider =
-				settings.modelProvider === 'gemini-api' &&
-				settings.geminiApiKeyStatus === 'valid' &&
-				!!settings.geminiApiKey.trim()
-					? 'gemini-api'
-					: 'code-assist';
+			modelProvider = settings.activeModelModule;
 		}
 
 		syncProvider();
@@ -124,8 +119,8 @@
 	});
 
 	function switchToCodeAssistProxy() {
-		setModelProvider('code-assist');
-		modelProvider = 'code-assist';
+		switchToProxy();
+		modelProvider = 'proxy';
 	}
 
 	onMount(async () => {

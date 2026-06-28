@@ -1,71 +1,346 @@
-import { loadSettings, saveSettings } from './settings';
+import {
+	loadSettings,
+	saveSettings,
+	type AiProvider,
+	type ByokKeyStatus,
+	type ModelModule,
+	type Settings
+} from './settings';
 
-const GEMINI_API_KEY_HEADER = 'X-Gemini-API-Key';
+const AI_PROVIDER_HEADER = 'X-AI-Provider';
+const AI_API_KEY_HEADER = 'X-AI-API-Key';
+const MODEL_MODULE_HEADER = 'X-Model-Module';
+const LEGACY_GEMINI_API_KEY_HEADER = 'X-Gemini-API-Key';
+const RESOLVED_MODEL_MODULE_HEADER = 'X-Resolved-Model-Module';
+const RESOLVED_AI_PROVIDER_HEADER = 'X-Resolved-AI-Provider';
+const MODEL_FALLBACK_HEADER = 'X-Model-Fallback';
 
-export type ModelProvider = 'code-assist' | 'gemini-api';
-export type GeminiApiKeyStatus = 'untested' | 'valid' | 'invalid';
+export type { AiProvider, ByokKeyStatus, ModelModule };
+export type ModelProvider = ModelModule;
 
+export interface AiProviderConfig {
+	id: AiProvider;
+	name: string;
+	keyLabel: string;
+	placeholder: string;
+	enabled: boolean;
+	modelPrefixes: string[];
+}
+
+export interface ModelRouteDecision {
+	module: ModelModule;
+	provider?: AiProvider;
+	headers: Record<string, string>;
+	reason: string;
+}
+
+export const AI_PROVIDERS: Record<AiProvider, AiProviderConfig> = {
+	google: {
+		id: 'google',
+		name: 'Google AI Studio',
+		keyLabel: 'Gemini API key',
+		placeholder: 'AIzaSyxxxxxxxxxxxxxxxx',
+		enabled: true,
+		modelPrefixes: ['gemini-']
+	},
+	openai: {
+		id: 'openai',
+		name: 'OpenAI',
+		keyLabel: 'OpenAI API key',
+		placeholder: 'sk-proj-xxxxxxxxxxxxxxxx',
+		enabled: false,
+		modelPrefixes: ['gpt-', 'o1', 'o3', 'o4']
+	},
+	anthropic: {
+		id: 'anthropic',
+		name: 'Anthropic',
+		keyLabel: 'Anthropic API key',
+		placeholder: 'sk-ant-api03-xxxxxxxxxxxxxxxx',
+		enabled: false,
+		modelPrefixes: ['claude-']
+	}
+};
+
+export function getProviderForModel(modelId: string): AiProvider | undefined {
+	return (Object.values(AI_PROVIDERS) as AiProviderConfig[]).find((provider) =>
+		provider.modelPrefixes.some((prefix) => modelId.startsWith(prefix))
+	)?.id;
+}
+
+export function resolveModelRoute(modelId: string): ModelRouteDecision {
+	const settings = loadSettings();
+	const provider = getProviderForModel(modelId);
+
+	if (!provider) {
+		return syncActiveRoute(settings, {
+			module: 'proxy',
+			headers: {},
+			reason: `No BYOK provider is mapped for model ${modelId}`
+		});
+	}
+
+	const providerConfig = AI_PROVIDERS[provider];
+	if (!providerConfig.enabled) {
+		return syncActiveRoute(settings, {
+			module: 'proxy',
+			provider,
+			headers: {},
+			reason: `${providerConfig.name} BYOK is not enabled yet`
+		});
+	}
+
+	const key = settings.byokKeys[provider]?.trim();
+	const status = settings.byokKeyStatus[provider];
+	if (!key) {
+		return syncActiveRoute(settings, {
+			module: 'proxy',
+			provider,
+			headers: {},
+			reason: `${providerConfig.name} key is not saved`
+		});
+	}
+
+	if (status !== 'valid') {
+		return syncActiveRoute(settings, {
+			module: 'proxy',
+			provider,
+			headers: {},
+			reason: `${providerConfig.name} key is ${status}`
+		});
+	}
+
+	return syncActiveRoute(settings, {
+		module: 'ai-sdk',
+		provider,
+		headers: {
+			[MODEL_MODULE_HEADER]: 'ai-sdk',
+			[AI_PROVIDER_HEADER]: provider,
+			[AI_API_KEY_HEADER]: key
+		},
+		reason: `${providerConfig.name} key is valid`
+	});
+}
+
+export async function validateProviderKey(provider: AiProvider): Promise<ByokKeyStatus> {
+	const settings = loadSettings();
+	const key = settings.byokKeys[provider]?.trim();
+	if (!key || !AI_PROVIDERS[provider].enabled) {
+		updateProviderKeyStatus(provider, 'invalid', 'Missing or disabled provider key');
+		return 'invalid';
+	}
+
+	try {
+		const res = await fetch('/api/byok-test', {
+			method: 'POST',
+			headers: {
+				[AI_PROVIDER_HEADER]: provider,
+				[AI_API_KEY_HEADER]: key
+			}
+		});
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			updateProviderKeyStatus(provider, 'invalid', data?.error || 'Provider key test failed');
+			return 'invalid';
+		}
+		updateProviderKeyStatus(provider, 'valid', '');
+		return 'valid';
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		updateProviderKeyStatus(provider, 'invalid', message);
+		return 'invalid';
+	}
+}
+
+export function markProviderKeyFailed(provider: AiProvider, error: unknown): void {
+	const message = error instanceof Error ? error.message : String(error);
+	updateProviderKeyStatus(provider, 'invalid', message || 'BYOK request failed');
+}
+
+export async function fetchWithModelFallback(
+	input: RequestInfo | URL,
+	init: RequestInit,
+	modelId: string,
+	fetcher: typeof fetch = fetch
+): Promise<Response> {
+	const route = resolveModelRoute(modelId);
+	const withRouteHeaders = {
+		...(init.headers as Record<string, string> | undefined),
+		...route.headers
+	};
+	let response: Response;
+	try {
+		response = await fetcher(input, {
+			...init,
+			headers: withRouteHeaders
+		});
+	} catch (err) {
+		if (route.module !== 'ai-sdk' || !route.provider) throw err;
+		markProviderKeyFailed(route.provider, err);
+		const proxyResponse = await fetcher(input, {
+			...init,
+			headers: proxyHeaders(init.headers)
+		});
+		return tagResolvedResponse(proxyResponse, 'proxy', undefined, true);
+	}
+
+	if (response.ok) return tagResolvedResponse(response, route.module, route.provider);
+	if (route.module !== 'ai-sdk' || !route.provider) {
+		return tagResolvedResponse(response, route.module, route.provider);
+	}
+
+	const errorText = await response.text().catch(() => '');
+	markProviderKeyFailed(route.provider, errorText || `BYOK request failed with ${response.status}`);
+
+	const proxyResponse = await fetcher(input, {
+		...init,
+		headers: proxyHeaders(init.headers)
+	});
+	return tagResolvedResponse(proxyResponse, 'proxy', undefined, true);
+}
+
+function proxyHeaders(headers: RequestInit['headers']): Record<string, string> {
+	const sourceEntries =
+		headers instanceof Headers
+			? Array.from(headers.entries())
+			: Array.isArray(headers)
+				? headers
+				: Object.entries(headers || {});
+	const routeHeaderNames = new Set([
+		MODEL_MODULE_HEADER.toLowerCase(),
+		AI_PROVIDER_HEADER.toLowerCase(),
+		AI_API_KEY_HEADER.toLowerCase(),
+		LEGACY_GEMINI_API_KEY_HEADER.toLowerCase()
+	]);
+	const nextHeaders: Record<string, string> = {};
+	for (const [key, value] of sourceEntries) {
+		if (!routeHeaderNames.has(key.toLowerCase())) nextHeaders[key] = value;
+	}
+	return nextHeaders;
+}
+
+function tagResolvedResponse(
+	response: Response,
+	module: ModelModule,
+	provider?: AiProvider,
+	fallback = false
+): Response {
+	const headers = new Headers(response.headers);
+	headers.set(RESOLVED_MODEL_MODULE_HEADER, module);
+	if (provider) headers.set(RESOLVED_AI_PROVIDER_HEADER, provider);
+	if (fallback) headers.set(MODEL_FALLBACK_HEADER, 'byok');
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers
+	});
+}
+
+export function setProviderKey(provider: AiProvider, key: string): void {
+	const settings = loadSettings();
+	saveSettings({
+		...settings,
+		byokKeys: { ...settings.byokKeys, [provider]: key.trim() },
+		byokKeyStatus: { ...settings.byokKeyStatus, [provider]: 'untested' },
+		activeModelModule: 'proxy',
+		activeAiProvider: '',
+		lastByokError: ''
+	});
+}
+
+export function clearProviderKey(provider: AiProvider): void {
+	const settings = loadSettings();
+	saveSettings({
+		...settings,
+		byokKeys: { ...settings.byokKeys, [provider]: '' },
+		byokKeyStatus: { ...settings.byokKeyStatus, [provider]: 'untested' },
+		activeModelModule:
+			settings.activeAiProvider === provider ? 'proxy' : settings.activeModelModule,
+		activeAiProvider: settings.activeAiProvider === provider ? '' : settings.activeAiProvider,
+		lastByokError: settings.activeAiProvider === provider ? '' : settings.lastByokError
+	});
+}
+
+export function updateProviderKeyStatus(
+	provider: AiProvider,
+	status: ByokKeyStatus,
+	error = ''
+): void {
+	const settings = loadSettings();
+	const hasValidKey = status === 'valid' && !!settings.byokKeys[provider]?.trim();
+	saveSettings({
+		...settings,
+		byokKeyStatus: { ...settings.byokKeyStatus, [provider]: status },
+		activeModelModule: hasValidKey ? 'ai-sdk' : 'proxy',
+		activeAiProvider: hasValidKey ? provider : '',
+		lastByokError: error
+	});
+}
+
+export function switchToProxy(error = ''): void {
+	const settings = loadSettings();
+	saveSettings({
+		...settings,
+		activeModelModule: 'proxy',
+		activeAiProvider: '',
+		lastByokError: error || settings.lastByokError
+	});
+}
+
+function syncActiveRoute(settings: Settings, route: ModelRouteDecision): ModelRouteDecision {
+	const nextModule = route.module;
+	const nextProvider = route.module === 'ai-sdk' ? (route.provider ?? '') : '';
+	if (
+		settings.activeModelModule !== nextModule ||
+		settings.activeAiProvider !== nextProvider ||
+		(route.module === 'ai-sdk' && settings.lastByokError)
+	) {
+		saveSettings({
+			...settings,
+			activeModelModule: nextModule,
+			activeAiProvider: nextProvider,
+			lastByokError: route.module === 'ai-sdk' ? '' : settings.lastByokError
+		});
+	}
+	return route;
+}
+
+// Backward-compatible wrappers while older call sites are migrated.
 export function getGeminiApiKey(): string {
-	if (typeof localStorage === 'undefined') return '';
-	return loadSettings().geminiApiKey.trim();
+	return loadSettings().byokKeys.google.trim();
 }
 
 export function setGeminiApiKey(key: string): void {
-	const settings = loadSettings();
-	saveSettings({
-		...settings,
-		geminiApiKey: key.trim(),
-		modelProvider: 'code-assist',
-		geminiApiKeyStatus: 'untested'
-	});
+	setProviderKey('google', key);
 }
 
 export function clearGeminiApiKey(): void {
-	const settings = loadSettings();
-	saveSettings({
-		...settings,
-		geminiApiKey: '',
-		modelProvider: 'code-assist',
-		geminiApiKeyStatus: 'untested'
-	});
+	clearProviderKey('google');
 }
 
 export function getModelProvider(): ModelProvider {
-	if (typeof localStorage === 'undefined') return 'code-assist';
-	return loadSettings().modelProvider;
+	return loadSettings().activeModelModule;
 }
 
-export function setModelProvider(provider: ModelProvider): void {
-	const settings = loadSettings();
-	if (provider === 'gemini-api') {
-		const hasValidKey = settings.geminiApiKey.trim() && settings.geminiApiKeyStatus === 'valid';
-		saveSettings({ ...settings, modelProvider: hasValidKey ? 'gemini-api' : 'code-assist' });
+export function setModelProvider(provider: ModelProvider | 'code-assist' | 'gemini-api'): void {
+	if (provider === 'ai-sdk' || provider === 'gemini-api') {
+		updateProviderKeyStatus('google', loadSettings().byokKeyStatus.google);
 		return;
 	}
-	saveSettings({ ...settings, modelProvider: 'code-assist' });
+	switchToProxy();
 }
 
-export function setGeminiApiKeyStatus(status: GeminiApiKeyStatus): void {
-	const settings = loadSettings();
-	saveSettings({
-		...settings,
-		geminiApiKeyStatus: status,
-		modelProvider: status === 'valid' ? settings.modelProvider : 'code-assist'
-	});
+export function setGeminiApiKeyStatus(status: ByokKeyStatus): void {
+	updateProviderKeyStatus('google', status);
 }
 
 export function isGeminiApiActive(): boolean {
-	if (typeof localStorage === 'undefined') return false;
-	const settings = loadSettings();
-	return (
-		settings.modelProvider === 'gemini-api' &&
-		settings.geminiApiKeyStatus === 'valid' &&
-		!!settings.geminiApiKey.trim()
-	);
+	return resolveModelRoute('gemini-3-flash-preview').module === 'ai-sdk';
 }
 
-export function getGeminiApiHeaders(): Record<string, string> {
-	if (!isGeminiApiActive()) return {};
-	const key = getGeminiApiKey();
-	return key ? { [GEMINI_API_KEY_HEADER]: key } : {};
+export function getGeminiApiHeaders(modelId = 'gemini-3-flash-preview'): Record<string, string> {
+	return resolveModelRoute(modelId).headers;
+}
+
+export function getLegacyGeminiApiHeaderName(): string {
+	return LEGACY_GEMINI_API_KEY_HEADER;
 }

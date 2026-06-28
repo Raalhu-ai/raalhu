@@ -19,13 +19,21 @@
 	} from 'lucide-svelte';
 	import type { User } from '$lib/api';
 	import type { Project } from '$lib/db';
-	import { loadSettings, saveSettings, applyTheme, applyFontSize, type Settings } from '$lib/settings';
-		import {
-			setGeminiApiKey,
-			clearGeminiApiKey,
-			setGeminiApiKeyStatus,
-			setModelProvider
-		} from '$lib/gemini-api';
+	import {
+		loadSettings,
+		saveSettings,
+		applyTheme,
+		applyFontSize,
+		type AiProvider,
+		type Settings
+	} from '$lib/settings';
+	import {
+		AI_PROVIDERS,
+		clearProviderKey,
+		setProviderKey,
+		switchToProxy,
+		validateProviderKey
+	} from '$lib/gemini-api';
 	import { exportChatHistory, importChatHistory } from '$lib/chat-history';
 	import { db } from '$lib/db';
 	import { listProjects, updateProjectMemory } from '$lib/project-store';
@@ -34,13 +42,6 @@
 
 	type SettingsSection = 'general' | 'memories' | 'byok' | 'importExport';
 	type ImportStatusType = 'idle' | 'success' | 'error';
-
-	type ProviderPlaceholder = {
-		name: string;
-		label: string;
-		placeholder: string;
-		enabled: boolean;
-	};
 
 	let {
 		user,
@@ -56,16 +57,24 @@
 		onSessionsImported?: () => void;
 	} = $props();
 
-		const initialSettings = loadSettings();
-		let settings = $state<Settings>(initialSettings);
+	const initialSettings = loadSettings();
+	let settings = $state<Settings>(initialSettings);
 	let clearDialogOpen = $state(false);
 	let clearing = $state(false);
-		let activeSection = $state<SettingsSection>('general');
-		let geminiApiKeyInput = $state(initialSettings.geminiApiKey);
-		let geminiApiKeySaved = $state(false);
-		let byokTesting = $state(false);
-		let byokTestError = $state('');
-		let exportingChats = $state(false);
+	let activeSection = $state<SettingsSection>('general');
+	let byokKeyInputs = $state<Record<AiProvider, string>>({ ...initialSettings.byokKeys });
+	let byokKeySaved = $state<Record<AiProvider, boolean>>({
+		google: false,
+		openai: false,
+		anthropic: false
+	});
+	let byokTestingProvider = $state<AiProvider | ''>('');
+	let byokTestErrors = $state<Record<AiProvider, string>>({
+		google: '',
+		openai: '',
+		anthropic: ''
+	});
+	let exportingChats = $state(false);
 	let importingChats = $state(false);
 	let importStatusType = $state<ImportStatusType>('idle');
 	let importStatus = $state('');
@@ -138,87 +147,65 @@
 		projectMemoryTimers.set(projectId, timer);
 	}
 
-		function handleGeminiApiKeyInput(e: Event) {
-			const target = e.target as HTMLInputElement;
-			geminiApiKeyInput = target.value;
-			geminiApiKeySaved = false;
-			byokTestError = '';
-		}
+	function handleProviderKeyInput(provider: AiProvider, e: Event) {
+		const target = e.target as HTMLInputElement;
+		byokKeyInputs = { ...byokKeyInputs, [provider]: target.value };
+		byokKeySaved = { ...byokKeySaved, [provider]: false };
+		byokTestErrors = { ...byokTestErrors, [provider]: '' };
+	}
 
-		function saveGeminiKey() {
-			setGeminiApiKey(geminiApiKeyInput);
-			settings = {
-				...settings,
-				geminiApiKey: geminiApiKeyInput.trim(),
-				modelProvider: 'code-assist',
-				geminiApiKeyStatus: 'untested'
-			};
-			geminiApiKeyInput = geminiApiKeyInput.trim();
-			geminiApiKeySaved = true;
-			byokTestError = '';
-		}
+	function saveKey(provider: AiProvider) {
+		const key = byokKeyInputs[provider].trim();
+		setProviderKey(provider, key);
+		settings = loadSettings();
+		byokKeyInputs = { ...byokKeyInputs, [provider]: key };
+		byokKeySaved = { ...byokKeySaved, [provider]: true };
+		byokTestErrors = { ...byokTestErrors, [provider]: '' };
+	}
 
-		function clearGeminiKey() {
-			clearGeminiApiKey();
-			settings = {
-				...settings,
-				geminiApiKey: '',
-				modelProvider: 'code-assist',
-				geminiApiKeyStatus: 'untested'
-			};
-			geminiApiKeyInput = '';
-			geminiApiKeySaved = false;
-			byokTestError = '';
-		}
+	function clearKey(provider: AiProvider) {
+		clearProviderKey(provider);
+		settings = loadSettings();
+		byokKeyInputs = { ...byokKeyInputs, [provider]: '' };
+		byokKeySaved = { ...byokKeySaved, [provider]: false };
+		byokTestErrors = { ...byokTestErrors, [provider]: '' };
+	}
 
-		async function testGeminiKey() {
-			const key = geminiApiKeyInput.trim();
+	async function testKey(provider: AiProvider) {
+		const key = byokKeyInputs[provider].trim();
 			if (!key) {
-				byokTestError = 'ޖެމިނީ API ކީ ޖައްސަވާ.';
+				byokTestErrors = { ...byokTestErrors, [provider]: 'API key is required.' };
 				return;
 			}
 
-			if (key !== settings.geminiApiKey) {
-				saveGeminiKey();
+			if (key !== settings.byokKeys[provider]) {
+				saveKey(provider);
 			}
 
-			byokTesting = true;
-			byokTestError = '';
+			byokTestingProvider = provider;
+			byokTestErrors = { ...byokTestErrors, [provider]: '' };
 			try {
-				const res = await fetch('/api/byok-test', {
-					method: 'POST',
-					headers: { 'X-Gemini-API-Key': key }
-				});
-				const data = await res.json();
-				if (!res.ok) {
-					throw new Error(data.error || 'Gemini key test failed');
+				const status = await validateProviderKey(provider);
+				settings = loadSettings();
+				if (status !== 'valid') {
+					byokTestErrors = {
+						...byokTestErrors,
+						[provider]: settings.lastByokError || 'Provider key test failed'
+					};
 				}
-				setGeminiApiKeyStatus('valid');
-				settings = { ...settings, geminiApiKey: key, geminiApiKeyStatus: 'valid' };
-			} catch (err: any) {
-				setGeminiApiKeyStatus('invalid');
-				settings = {
-					...settings,
-					geminiApiKey: key,
-					modelProvider: 'code-assist',
-					geminiApiKeyStatus: 'invalid'
-				};
-				byokTestError = err.message || 'Gemini key test failed';
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				settings = loadSettings();
+				byokTestErrors = { ...byokTestErrors, [provider]: message || 'Provider key test failed' };
 			} finally {
-				byokTesting = false;
+				byokTestingProvider = '';
 			}
-		}
+	}
 
-		function useGeminiApi() {
-			if (!settings.geminiApiKey || settings.geminiApiKeyStatus !== 'valid') return;
-			setModelProvider('gemini-api');
-			settings = { ...settings, modelProvider: 'gemini-api' };
-		}
-
-		function useCodeAssistProxy() {
-			setModelProvider('code-assist');
-			settings = { ...settings, modelProvider: 'code-assist' };
-		}
+	function useProxy() {
+		switchToProxy();
+		settings = loadSettings();
+	}
 
 	async function clearAllChats() {
 		clearing = true;
@@ -325,26 +312,7 @@
 		{ value: 'large', label: 'ބޮޑު' }
 	];
 
-	const byokProviders: ProviderPlaceholder[] = [
-		{
-			name: 'Anthropic',
-			label: 'Anthropic API key',
-			placeholder: 'sk-ant-api03-xxxxxxxxxxxxxxxx',
-			enabled: false
-		},
-		{
-			name: 'OpenAI',
-			label: 'OpenAI API key',
-			placeholder: 'sk-proj-xxxxxxxxxxxxxxxx',
-			enabled: false
-		},
-		{
-			name: 'Google AI Studio',
-			label: 'Gemini API key',
-			placeholder: 'AIzaSyxxxxxxxxxxxxxxxx',
-			enabled: true
-		}
-	];
+	const byokProviders = [AI_PROVIDERS.google, AI_PROVIDERS.openai, AI_PROVIDERS.anthropic];
 </script>
 
 <div class="flex-1 overflow-y-auto" dir="rtl">
@@ -693,6 +661,13 @@
 
 							<div class="mt-6 rounded-[24px] border border-border/70 bg-card/40">
 								{#each byokProviders as provider, index}
+									{@const providerStatus = settings.byokKeyStatus[provider.id]}
+									{@const providerKey = settings.byokKeys[provider.id]}
+									{@const providerInput = byokKeyInputs[provider.id]}
+									{@const providerError = byokTestErrors[provider.id]}
+									{@const providerIsActive =
+										settings.activeModelModule === 'ai-sdk' &&
+										settings.activeAiProvider === provider.id}
 									<div
 										class="grid gap-3 px-0 py-6 md:grid-cols-[160px_minmax(0,1fr)] md:px-6 {index < byokProviders.length - 1 ? 'border-b border-border/70' : ''}"
 									>
@@ -709,7 +684,7 @@
 															އެނޭބަލް ކުރެވިފައި
 														</div>
 														<div class="thaana rounded-full border border-border/70 px-3 py-1 text-xs text-muted-foreground">
-															{#if settings.modelProvider === 'gemini-api'}
+															{#if providerIsActive}
 																މިހާރު BYOK
 															{:else}
 																މިހާރު ޕްރޮކްސީ
@@ -717,15 +692,15 @@
 														</div>
 														<div
 															class="thaana rounded-full border px-3 py-1 text-xs
-																{settings.geminiApiKeyStatus === 'valid'
+																{providerStatus === 'valid'
 																	? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-																	: settings.geminiApiKeyStatus === 'invalid'
+																	: providerStatus === 'invalid'
 																		? 'border-destructive/30 bg-destructive/10 text-destructive'
 																		: 'border-border/70 text-muted-foreground'}"
 														>
-															{#if settings.geminiApiKeyStatus === 'valid'}
+															{#if providerStatus === 'valid'}
 																ޓެސްޓް ފާސް
-															{:else if settings.geminiApiKeyStatus === 'invalid'}
+															{:else if providerStatus === 'invalid'}
 																ޓެސްޓް ފޭލް
 															{:else}
 																ޓެސްޓް ނުކުރެވި
@@ -741,12 +716,12 @@
 												{/if}
 											</div>
 											<div class="space-y-2">
-												<div class="thaana text-sm text-muted-foreground">{provider.label}</div>
+												<div class="thaana text-sm text-muted-foreground">{provider.keyLabel}</div>
 												{#if provider.enabled}
 													<input
 														type="password"
-														value={geminiApiKeyInput}
-														oninput={handleGeminiApiKeyInput}
+														value={providerInput}
+														oninput={(event) => handleProviderKeyInput(provider.id, event)}
 														placeholder={provider.placeholder}
 														dir="ltr"
 														autocomplete="off"
@@ -754,14 +729,14 @@
 														class="w-full rounded-2xl border border-border/70 bg-accent/40 px-4 py-3 text-sm text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-primary/50"
 													/>
 														<p class="thaana text-xs text-muted-foreground">
-															{#if settings.geminiApiKey}
-																ކީ މި ބްރައުޒަރގައި ސޭވް ކުރެވިފައި. BYOK ބޭނުންކުރެވޭނީ ޓެސްޓް ފާސް ވުމަށްފަހު.
+															{#if providerKey}
+																ކީ މި ބްރައުޒަރގައި ސޭވް ކުރެވިފައި. ޓެސްޓް ފާސް ވުމުން ރިކުއެސްޓްތައް SDK މޮޑިއުލަށް އޮޓޯ ސްވިޗް ވާނެ.
 															{:else}
 																ކީ އެއް އަދި ސޭވް ނުކުރެވި.
 															{/if}
 														</p>
-														{#if byokTestError}
-															<p class="text-xs text-destructive break-words" dir="ltr">{byokTestError}</p>
+														{#if providerError}
+															<p class="text-xs text-destructive break-words" dir="ltr">{providerError}</p>
 														{/if}
 													{:else}
 													<div class="rounded-2xl border border-border/70 bg-accent/40 px-4 py-3 text-sm text-muted-foreground">
@@ -772,7 +747,7 @@
 												<div class="flex flex-wrap gap-3">
 													<button
 														disabled={!provider.enabled}
-													onclick={saveGeminiKey}
+													onclick={() => saveKey(provider.id)}
 													class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
 														{provider.enabled
 															? 'text-foreground hover:bg-accent'
@@ -781,28 +756,18 @@
 														<span class="thaana">ކީ ސޭވް ކުރޭ</span>
 													</button>
 													<button
-														disabled={!provider.enabled || byokTesting || !geminiApiKeyInput.trim()}
-														onclick={testGeminiKey}
+														disabled={!provider.enabled || byokTestingProvider === provider.id || !providerInput.trim()}
+														onclick={() => testKey(provider.id)}
 														class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
-															{provider.enabled && !byokTesting && geminiApiKeyInput.trim()
+															{provider.enabled && byokTestingProvider !== provider.id && providerInput.trim()
 																? 'text-foreground hover:bg-accent'
 																: 'text-muted-foreground opacity-60'}"
 													>
-														<span class="thaana">{byokTesting ? 'ޓެސްޓް ކުރަނީ...' : 'ކީ ޓެސްޓް ކުރޭ'}</span>
-													</button>
-													<button
-														disabled={!provider.enabled || settings.geminiApiKeyStatus !== 'valid' || !settings.geminiApiKey}
-														onclick={useGeminiApi}
-														class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
-															{provider.enabled && settings.geminiApiKeyStatus === 'valid' && settings.geminiApiKey
-																? 'text-foreground hover:bg-accent'
-																: 'text-muted-foreground opacity-60'}"
-													>
-														<span class="thaana">BYOK ބޭނުންކުރޭ</span>
+														<span class="thaana">{byokTestingProvider === provider.id ? 'ޓެސްޓް ކުރަނީ...' : 'ކީ ޓެސްޓް ކުރޭ'}</span>
 													</button>
 													<button
 														disabled={!provider.enabled}
-														onclick={useCodeAssistProxy}
+														onclick={useProxy}
 														class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
 															{provider.enabled
 																? 'text-foreground hover:bg-accent'
@@ -812,7 +777,7 @@
 													</button>
 													<button
 														disabled={!provider.enabled}
-														onclick={clearGeminiKey}
+														onclick={() => clearKey(provider.id)}
 													class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
 														{provider.enabled
 															? 'text-foreground hover:bg-accent'
@@ -820,7 +785,7 @@
 												>
 													<span class="thaana">ކީ ފޮހެލާ</span>
 												</button>
-												{#if provider.enabled && geminiApiKeySaved}
+												{#if provider.enabled && byokKeySaved[provider.id]}
 													<span class="thaana inline-flex items-center rounded-xl px-2 text-xs text-emerald-300">
 														ސޭވް ކުރެވިއްޖެ
 													</span>

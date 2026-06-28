@@ -244,12 +244,20 @@ function sleep(ms: number): Promise<void> {
 
 function hasGeminiApiKeyHeader(headers: RequestInit['headers']): boolean {
 	if (!headers) return false;
-	if (headers instanceof Headers) return !!headers.get('X-Gemini-API-Key');
+	if (headers instanceof Headers) {
+		return !!headers.get('X-AI-API-Key') || !!headers.get('X-Gemini-API-Key');
+	}
 	if (Array.isArray(headers)) {
-		return headers.some(([key, value]) => key.toLowerCase() === 'x-gemini-api-key' && !!value);
+		return headers.some(
+			([key, value]) =>
+				(key.toLowerCase() === 'x-ai-api-key' || key.toLowerCase() === 'x-gemini-api-key') &&
+				!!value
+		);
 	}
 	return Object.entries(headers).some(
-		([key, value]) => key.toLowerCase() === 'x-gemini-api-key' && !!value
+		([key, value]) =>
+			(key.toLowerCase() === 'x-ai-api-key' || key.toLowerCase() === 'x-gemini-api-key') &&
+			!!value
 	);
 }
 

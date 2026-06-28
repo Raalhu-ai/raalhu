@@ -3,7 +3,7 @@ import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, 
 import { AGENT_TOOLS } from './tools';
 import { executeToolCall } from './executor';
 import { fetchWithRetry, TerminalQuotaError } from './retry';
-import { getGeminiApiHeaders } from '$lib/gemini-api';
+import { fetchWithModelFallback, markProviderKeyFailed, type AiProvider } from '$lib/gemini-api';
 
 const MAX_TURNS = 15;
 
@@ -24,6 +24,7 @@ interface TurnAccumulator {
 	rawParts: any[];
 	functionCalls: { name: string; args: Record<string, unknown> }[];
 	textContent: string;
+	streamError?: string;
 }
 
 /**
@@ -69,7 +70,7 @@ async function* streamGeminiTurn(
 ): AsyncGenerator<AgentEvent> {
 	for await (const chunk of parseSSEStream(response)) {
 		if (chunk?.error) {
-			yield { type: 'error', message: `Gemini API error: ${chunk.error}` };
+			acc.streamError = `Gemini API error: ${chunk.error}`;
 			return;
 		}
 
@@ -141,24 +142,28 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			toolCount: AGENT_TOOLS[0]?.functionDeclarations?.length
 		});
 
-		// Fetch SSE stream with retry (up to 10 attempts with exponential backoff)
-		let response: Response;
-
-		try {
+		async function requestTurnStream(): Promise<Response> {
 			const t0 = performance.now();
-			response = await fetchWithRetry('/api/agent-stream', {
+			const response = await fetchWithModelFallback('/api/agent-stream', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(reqBody)
-			});
+			}, model, fetchWithRetry);
 			console.log(`[AgentLoop] Response status=${response.status} (${(performance.now() - t0).toFixed(0)}ms)`);
 
 			if (!response.ok) {
 				const errText = await response.text();
 				console.error(`[AgentLoop] API error ${response.status}:`, errText);
-				yield { type: 'error', message: `API error (${response.status}): ${errText}` };
-				return;
+				throw new Error(`API error (${response.status}): ${errText}`);
 			}
+			return response;
+		}
+
+		// Fetch SSE stream with retry (up to 10 attempts with exponential backoff)
+		let response: Response;
+
+		try {
+			response = await requestTurnStream();
 		} catch (err: any) {
 			if (err instanceof TerminalQuotaError) {
 				// Daily quota exhausted — don't show an API error, just stop silently.
@@ -167,7 +172,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 				return;
 			}
 			console.error(`[AgentLoop] Network/retry error:`, err);
-			yield { type: 'error', message: `Network error: ${err.message}` };
+			yield { type: 'error', message: err.message?.startsWith('API error') ? err.message : `Network error: ${err.message}` };
 			return;
 		}
 
@@ -180,6 +185,35 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
 		for await (const event of streamGeminiTurn(response, acc)) {
 			yield event;
+		}
+
+		if (
+			acc.streamError &&
+			response.headers.get('X-Resolved-Model-Module') === 'ai-sdk' &&
+			response.headers.get('X-Resolved-AI-Provider') &&
+			acc.rawParts.length === 0 &&
+			acc.functionCalls.length === 0 &&
+			acc.textContent.length === 0
+		) {
+			const provider = response.headers.get('X-Resolved-AI-Provider') as AiProvider;
+			console.warn(`[AgentLoop] BYOK stream failed before content; retrying through proxy: ${acc.streamError}`);
+			markProviderKeyFailed(provider, acc.streamError);
+			try {
+				response = await requestTurnStream();
+				acc.streamError = undefined;
+				for await (const event of streamGeminiTurn(response, acc)) {
+					yield event;
+				}
+			} catch (err: any) {
+				if (err instanceof TerminalQuotaError) return;
+				yield { type: 'error', message: err.message?.startsWith('API error') ? err.message : `Network error: ${err.message}` };
+				return;
+			}
+		}
+
+		if (acc.streamError) {
+			yield { type: 'error', message: acc.streamError };
+			return;
 		}
 
 		console.log(`[AgentLoop] Turn streamed: ${acc.rawParts.length} parts, ${acc.functionCalls.length} functionCalls, ${acc.textContent.length} chars text`);

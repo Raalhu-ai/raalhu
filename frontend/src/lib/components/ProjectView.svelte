@@ -26,7 +26,7 @@
 			onOpenSession,
 			selectedModel = $bindable('gemini-3-flash-preview'),
 			models = [],
-			modelProvider = 'code-assist',
+			modelProvider = 'proxy',
 			onRefreshProjects = () => {}
 		}: {
 		projectId: string;
@@ -35,7 +35,7 @@
 		onOpenSession: (id: string) => void;
 			selectedModel?: string;
 			models?: string[];
-			modelProvider?: 'code-assist' | 'gemini-api';
+			modelProvider?: 'proxy' | 'ai-sdk';
 			onRefreshProjects?: () => void;
 		} = $props();
 
