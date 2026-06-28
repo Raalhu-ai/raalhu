@@ -202,11 +202,12 @@ export async function executeToolCall(
 			const prompt = args.prompt as string;
 			console.log(`[Executor] Web fetch: "${prompt.slice(0, 200)}"`);
 			try {
-				const res = await fetchWithRetry('/api/agent-generate', {
+				const res = await fetchWithRetry('/api/generate', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 					body: JSON.stringify({
 						model: 'gemini-3-flash-preview',
+						userPromptId: crypto.randomUUID(),
 						contents: [{ role: 'user', parts: [{ text: prompt }] }],
 						tools: [{ url_context: {} }]
 					})
@@ -332,11 +333,12 @@ export async function executeToolCall(
 			const query = args.query as string;
 			console.log(`[Executor] Web search: "${query}"`);
 			try {
-				const res = await fetchWithRetry('/api/agent-generate', {
+				const res = await fetchWithRetry('/api/generate', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 					body: JSON.stringify({
 						model: 'gemini-3-flash-preview',
+						userPromptId: crypto.randomUUID(),
 						contents: [{ role: 'user', parts: [{ text: query }] }],
 						tools: [{ google_search: {} }]
 					})

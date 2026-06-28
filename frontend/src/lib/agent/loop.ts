@@ -123,6 +123,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			model,
 			contents: history,
 			systemInstruction,
+			userPromptId: crypto.randomUUID(),
 			...(memories && { memories }),
 			tools: AGENT_TOOLS,
 			toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
@@ -134,7 +135,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			}
 		};
 
-		console.log(`[AgentLoop] POST /api/agent-stream`, {
+		console.log(`[AgentLoop] POST /api/stream`, {
 			model,
 			contentsLength: history.length,
 			lastRole: history[history.length - 1]?.role,
@@ -146,7 +147,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
 		try {
 			const t0 = performance.now();
-			response = await fetchWithRetry('/api/agent-stream', {
+			response = await fetchWithRetry('/api/stream', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...getGeminiApiHeaders() },
 				body: JSON.stringify(reqBody)
