@@ -97,11 +97,12 @@ cp apps/mobile/.env.example apps/mobile/.env  # mobile (API base URL)
 | `KV_AUTH_SESSIONS_ID` | `server/.env` | Cloudflare KV namespace ID for auth sessions |
 | `KV_SESSIONS_ID` | `server/.env` | Cloudflare KV namespace ID for sessions |
 | `BACKEND_URL` | `frontend/.env` | Backend URL (defaults to `http://localhost:3000`) |
-| `PUBLIC_GA_ID` | `frontend/.env` | Google Analytics ID (optional) |
+| `PUBLIC_GA_ID` | `frontend/.env`, Cloudflare Pages env vars | Google Analytics measurement ID (optional; leave unset to disable) |
 | `EXPO_PUBLIC_API_BASE` | `apps/mobile/.env` | API base URL for mobile (defaults to `http://localhost:3000`) |
 | `EAS_PROJECT_ID` | Root `.env` | Expo EAS project ID (from `eas init`, mobile builds only) |
 
 For production Cloudflare Workers, set OAuth secrets via `wrangler secret put`.
+For production Cloudflare Pages, set `PUBLIC_GA_ID` in the Pages project environment variables instead of committing a real measurement ID to `wrangler.toml`.
 
 ## Contributing
 

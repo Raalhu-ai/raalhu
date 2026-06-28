@@ -19,14 +19,15 @@ export default function RootLayout() {
     root.setAttribute('lang', 'dv');
     root.setAttribute('dir', 'rtl');
 
-    // Google Analytics (inject once)
-    if (!document.querySelector('script[src*="googletagmanager"]')) {
+    // Google Analytics (inject once if configured)
+    const gaId = process.env.EXPO_PUBLIC_GA_ID;
+    if (gaId && !document.querySelector('script[src*="googletagmanager"]')) {
       const gaScript = document.createElement('script');
       gaScript.async = true;
-      gaScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-DM4QWKNCSF';
+      gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
       document.head.appendChild(gaScript);
       const gaInit = document.createElement('script');
-      gaInit.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-DM4QWKNCSF');`;
+      gaInit.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(gaId)});`;
       document.head.appendChild(gaInit);
     }
 
