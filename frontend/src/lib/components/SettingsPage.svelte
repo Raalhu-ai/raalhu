@@ -662,7 +662,6 @@
 							<div class="mt-6 rounded-[24px] border border-border/70 bg-card/40">
 								{#each byokProviders as provider, index}
 									{@const providerStatus = settings.byokKeyStatus[provider.id]}
-									{@const providerKey = settings.byokKeys[provider.id]}
 									{@const providerInput = byokKeyInputs[provider.id]}
 									{@const providerError = byokTestErrors[provider.id]}
 									{@const providerIsActive =
@@ -728,13 +727,6 @@
 														spellcheck="false"
 														class="w-full rounded-2xl border border-border/70 bg-accent/40 px-4 py-3 text-sm text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-primary/50"
 													/>
-														<p class="thaana text-xs text-muted-foreground">
-															{#if providerKey}
-																ކީ މި ބްރައުޒަރގައި ސޭވް ކުރެވިފައި. ޓެސްޓް ފާސް ވުމުން ރިކުއެސްޓްތައް SDK މޮޑިއުލަށް އޮޓޯ ސްވިޗް ވާނެ.
-															{:else}
-																ކީ އެއް އަދި ސޭވް ނުކުރެވި.
-															{/if}
-														</p>
 														{#if providerError}
 															<p class="text-xs text-destructive break-words" dir="ltr">{providerError}</p>
 														{/if}

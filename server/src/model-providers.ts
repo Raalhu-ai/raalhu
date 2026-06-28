@@ -1,5 +1,5 @@
 import { createGoogle } from '@ai-sdk/google';
-import { generateText, streamText, type ModelMessage } from 'ai';
+import { generateText, jsonSchema, streamText, type ModelMessage } from 'ai';
 import type { SessionData } from './session';
 
 export type ModelModule = 'proxy' | 'ai-sdk';
@@ -79,6 +79,10 @@ export function normalizeGeminiFunctionSchemaForAiSdk(parameters: unknown): Reco
 	return normalizeSchemaValue(parameters) as Record<string, any>;
 }
 
+export function geminiFunctionParametersToAiSdkInputSchema(parameters: unknown) {
+	return jsonSchema(normalizeGeminiFunctionSchemaForAiSdk(parameters));
+}
+
 function textFromParts(parts: Record<string, any>[] | undefined): string {
 	return (parts || [])
 		.map((part) => {
@@ -124,7 +128,7 @@ function buildGoogleTools(googleProvider: ReturnType<typeof createGoogle>, tools
 	for (const declaration of declarations) {
 		toolMap[declaration.name] = {
 			description: declaration.description,
-			inputSchema: normalizeGeminiFunctionSchemaForAiSdk(declaration.parameters)
+			inputSchema: geminiFunctionParametersToAiSdkInputSchema(declaration.parameters)
 		};
 	}
 
