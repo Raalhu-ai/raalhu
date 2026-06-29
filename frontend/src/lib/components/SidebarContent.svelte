@@ -1,7 +1,8 @@
 <script lang="ts">
-		import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles, Settings, KeyRound } from 'lucide-svelte';
+		import { ChevronDown, RefreshCw, Waves, Plus, LogOut, EllipsisVertical, Pencil, Archive, Trash2, MessageSquareDashed, MessageSquare, PanelLeft, X, FolderOpen, Sparkles, Settings, KeyRound } from 'lucide-svelte';
 	import type { QuotaModel, User } from '$lib/api';
 	import type { ChatSession, Project } from '$lib/db';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { modelDisplayName } from '$lib/modes';
 
@@ -21,6 +22,7 @@
 		onSelectSession = (_id: string) => {},
 		onRenameSession = (_id: string, _title: string) => {},
 		onArchiveSession = (_id: string) => {},
+		onDeleteSession = (_id: string) => {},
 		onToggleCollapse = () => {},
 		closeMode = false,
 		projects = [],
@@ -47,6 +49,7 @@
 		onSelectSession?: (id: string) => void;
 		onRenameSession?: (id: string, title: string) => void;
 		onArchiveSession?: (id: string) => void;
+		onDeleteSession?: (id: string) => void;
 		onToggleCollapse?: () => void;
 		closeMode?: boolean;
 		projects?: Project[];
@@ -122,10 +125,31 @@
 	// --- Rename state ---
 	let renamingId = $state<string | null>(null);
 	let renameValue = $state('');
+	let deleteDialogOpen = $state(false);
+	let sessionToDelete = $state<ChatSession | null>(null);
+	let deletingSession = $state(false);
 
 	function startRename(session: ChatSession) {
 		renamingId = session.id;
 		renameValue = session.title;
+	}
+
+	function startDeleteSession(session: ChatSession) {
+		sessionToDelete = session;
+		deleteDialogOpen = true;
+	}
+
+	async function confirmDeleteSession() {
+		if (!sessionToDelete) return;
+
+		deletingSession = true;
+		try {
+			await onDeleteSession(sessionToDelete.id);
+			deleteDialogOpen = false;
+			sessionToDelete = null;
+		} finally {
+			deletingSession = false;
+		}
 	}
 
 	function submitRename() {
@@ -270,6 +294,13 @@
 											<Archive class="w-3.5 h-3.5" />
 											އާކައިވް
 										</DropdownMenu.Item>
+										<DropdownMenu.Item
+											class="thaana text-xs gap-2 text-destructive"
+											onclick={() => startDeleteSession(session)}
+										>
+											<Trash2 class="w-3.5 h-3.5" />
+											ޗެޓް ފޮހެލާ
+										</DropdownMenu.Item>
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
 							</div>
@@ -411,3 +442,39 @@
 		{/if}
 	</div>
 </div>
+
+<Dialog.Root bind:open={deleteDialogOpen}>
+	<Dialog.Content class="max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title class="thaana-heading text-lg" dir="rtl">ޗެޓް ފޮހެލާ</Dialog.Title>
+			<Dialog.Description class="thaana text-sm text-muted-foreground" dir="rtl">
+				މި ޗެޓް ދާއިމީގޮތުން ފޮހެލަންތަ؟ މި ޢަމަލު އަނބުރާ ނުކުރެވޭނެ.
+			</Dialog.Description>
+		</Dialog.Header>
+		{#if sessionToDelete}
+			<div class="thaana truncate rounded-xl border border-border/70 bg-accent/40 px-4 py-3 text-sm text-foreground" dir="rtl">
+				{sessionToDelete.title}
+			</div>
+		{/if}
+		<Dialog.Footer dir="rtl">
+			<button
+				onclick={() => (deleteDialogOpen = false)}
+				disabled={deletingSession}
+				class="thaana rounded-lg border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+			>
+				ކެންސަލް
+			</button>
+			<button
+				onclick={confirmDeleteSession}
+				disabled={deletingSession}
+				class="thaana rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground transition-colors duration-150 hover:bg-destructive/90 disabled:opacity-50"
+			>
+				{#if deletingSession}
+					ފޮހެނީ...
+				{:else}
+					ފޮހެލާ
+				{/if}
+			</button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
