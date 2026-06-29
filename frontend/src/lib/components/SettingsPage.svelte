@@ -38,6 +38,7 @@
 		validateProviderKey
 	} from '$lib/gemini-api';
 	import {
+		deleteSession,
 		exportChatHistory,
 		formatRelativeTime,
 		importChatHistory,
@@ -93,6 +94,9 @@
 	let projectMemoryDrafts = $state<Record<string, string>>({});
 	let archivedSessions = $state<ChatSession[]>([]);
 	let restoringSessionId = $state('');
+	let selectedArchivedSessionIds = $state<string[]>([]);
+	let archiveDeleteDialogOpen = $state(false);
+	let deletingArchivedSessions = $state(false);
 	const projectMemoryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	function update(partial: Partial<Settings>) {
@@ -133,7 +137,27 @@
 	}
 
 	async function loadArchive() {
-		archivedSessions = await listArchivedSessions();
+		const sessions = await listArchivedSessions();
+		const sessionIds = new Set(sessions.map((session) => session.id));
+		archivedSessions = sessions;
+		selectedArchivedSessionIds = selectedArchivedSessionIds.filter((id) => sessionIds.has(id));
+	}
+
+	function isArchivedSessionSelected(id: string) {
+		return selectedArchivedSessionIds.includes(id);
+	}
+
+	function toggleArchivedSessionSelection(id: string) {
+		selectedArchivedSessionIds = isArchivedSessionSelected(id)
+			? selectedArchivedSessionIds.filter((selectedId) => selectedId !== id)
+			: [...selectedArchivedSessionIds, id];
+	}
+
+	function toggleAllArchivedSessions() {
+		selectedArchivedSessionIds =
+			selectedArchivedSessionIds.length === archivedSessions.length
+				? []
+				: archivedSessions.map((session) => session.id);
 	}
 
 	function toggleMemoryProject(projectId: string) {
@@ -294,12 +318,31 @@
 		restoringSessionId = id;
 		try {
 			await restoreSession(id);
+			selectedArchivedSessionIds = selectedArchivedSessionIds.filter((selectedId) => selectedId !== id);
 			await loadArchive();
 			onSessionsImported();
 		} catch (err) {
 			console.error('Failed to restore chat:', err);
 		} finally {
 			restoringSessionId = '';
+		}
+	}
+
+	async function deleteSelectedArchivedSessions() {
+		const ids = selectedArchivedSessionIds;
+		if (ids.length === 0) return;
+
+		deletingArchivedSessions = true;
+		try {
+			await Promise.all(ids.map((id) => deleteSession(id)));
+			selectedArchivedSessionIds = [];
+			await loadArchive();
+			archiveDeleteDialogOpen = false;
+			onSessionsImported();
+		} catch (err) {
+			console.error('Failed to delete archived chats:', err);
+		} finally {
+			deletingArchivedSessions = false;
 		}
 	}
 
@@ -703,18 +746,49 @@
 										</div>
 									</div>
 								{:else}
+									<div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-4 md:px-6">
+										<label class="thaana inline-flex cursor-pointer items-center gap-3 text-sm text-foreground">
+											<input
+												type="checkbox"
+												checked={selectedArchivedSessionIds.length === archivedSessions.length}
+												onchange={toggleAllArchivedSessions}
+												class="h-4 w-4 rounded border-border bg-background accent-primary"
+											/>
+											<span>ހުރިހާ ޚިޔާރު ކުރޭ</span>
+										</label>
+										<button
+											onclick={() => (archiveDeleteDialogOpen = true)}
+											disabled={selectedArchivedSessionIds.length === 0}
+											class="inline-flex items-center gap-2 rounded-xl border border-destructive/30 px-4 py-2.5 text-sm text-destructive transition-colors duration-150 hover:bg-destructive/10 disabled:opacity-50"
+										>
+											<Trash2 class="h-4 w-4" />
+											<span class="thaana">
+												{selectedArchivedSessionIds.length > 0
+													? `${selectedArchivedSessionIds.length} ޗެޓް ފޮހެލާ`
+													: 'ޗެޓް ފޮހެލާ'}
+											</span>
+										</button>
+									</div>
 									<div class="divide-y divide-border/70">
 										{#each archivedSessions as session (session.id)}
 											<div class="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-6">
-												<div class="min-w-0">
-													<div class="thaana truncate text-base font-medium text-foreground">
-														{session.title}
+												<label class="flex min-w-0 cursor-pointer items-start gap-3">
+													<input
+														type="checkbox"
+														checked={isArchivedSessionSelected(session.id)}
+														onchange={() => toggleArchivedSessionSelection(session.id)}
+														class="mt-1 h-4 w-4 shrink-0 rounded border-border bg-background accent-primary"
+													/>
+													<div class="min-w-0">
+														<div class="thaana truncate text-base font-medium text-foreground">
+															{session.title}
+														</div>
+														<div class="thaana mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+															<span>{formatRelativeTime(session.updatedAt)}</span>
+															<span dir="ltr">{session.model}</span>
+														</div>
 													</div>
-													<div class="thaana mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-														<span>{formatRelativeTime(session.updatedAt)}</span>
-														<span dir="ltr">{session.model}</span>
-													</div>
-												</div>
+												</label>
 												<div class="flex flex-wrap gap-2">
 													<button
 														onclick={() => restoreArchivedSession(session.id)}
@@ -1022,6 +1096,37 @@
 					ފޮހެނީ...
 				{:else}
 					ޗެޓް ފޮހެލާ
+				{/if}
+			</button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={archiveDeleteDialogOpen}>
+	<Dialog.Content class="max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title class="thaana-heading text-lg" dir="rtl">އާކައިވް ޗެޓް ފޮހެލާ</Dialog.Title>
+			<Dialog.Description class="thaana text-sm text-muted-foreground" dir="rtl">
+				{selectedArchivedSessionIds.length} އާކައިވް ޗެޓް ދާއިމީގޮތުން ފޮހެލަންތަ؟ މި ޢަމަލު އަނބުރާ ނުކުރެވޭނެ.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer dir="rtl">
+			<button
+				onclick={() => (archiveDeleteDialogOpen = false)}
+				disabled={deletingArchivedSessions}
+				class="thaana rounded-lg border border-border px-4 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+			>
+				ކެންސަލް
+			</button>
+			<button
+				onclick={deleteSelectedArchivedSessions}
+				disabled={deletingArchivedSessions || selectedArchivedSessionIds.length === 0}
+				class="thaana rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground transition-colors duration-150 hover:bg-destructive/90 disabled:opacity-50"
+			>
+				{#if deletingArchivedSessions}
+					ފޮހެނީ...
+				{:else}
+					ފޮހެލާ
 				{/if}
 			</button>
 		</Dialog.Footer>

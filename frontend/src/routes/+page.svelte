@@ -24,6 +24,7 @@
 		getSession,
 		renameSession,
 		archiveSession,
+		deleteSession,
 		fetchAITitle,
 		updateSessionTitle,
 		loadAgentMessages
@@ -465,6 +466,18 @@
 		}
 		unmountChat(id);
 	}
+
+	async function handleDeleteSession(id: string) {
+		await deleteSession(id);
+		await refreshSessions();
+		if (activeSessionId === id) {
+			activeSessionId = null;
+			activeProjectContext = undefined;
+			appState = 'dashboard';
+			history.replaceState(history.state, '', '/');
+		}
+		unmountChat(id);
+	}
 </script>
 
 {#if appState === 'loading'}
@@ -548,6 +561,7 @@
 					onSelectSession={resumeSession}
 					onRenameSession={handleRename}
 					onArchiveSession={handleArchive}
+					onDeleteSession={handleDeleteSession}
 					onToggleCollapse={toggleSidebar}
 					{projects}
 					{activeProjectId}
