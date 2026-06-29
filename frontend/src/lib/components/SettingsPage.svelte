@@ -15,10 +15,13 @@
 		Bot,
 		Download,
 		Upload,
-		FileJson
+		FileJson,
+		Archive,
+		RotateCcw,
+		MessageSquareDashed
 	} from 'lucide-svelte';
 	import type { User } from '$lib/api';
-	import type { Project } from '$lib/db';
+	import type { ChatSession, Project } from '$lib/db';
 	import {
 		loadSettings,
 		saveSettings,
@@ -34,13 +37,19 @@
 		switchToProxy,
 		validateProviderKey
 	} from '$lib/gemini-api';
-	import { exportChatHistory, importChatHistory } from '$lib/chat-history';
+	import {
+		exportChatHistory,
+		formatRelativeTime,
+		importChatHistory,
+		listArchivedSessions,
+		restoreSession
+	} from '$lib/chat-history';
 	import { db } from '$lib/db';
 	import { listProjects, updateProjectMemory } from '$lib/project-store';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 
-	type SettingsSection = 'general' | 'memories' | 'byok' | 'importExport';
+	type SettingsSection = 'general' | 'memories' | 'archive' | 'byok' | 'importExport';
 	type ImportStatusType = 'idle' | 'success' | 'error';
 
 	let {
@@ -82,6 +91,8 @@
 	let memoryProjects = $state<Project[]>([]);
 	let expandedMemoryProjects = $state<Record<string, boolean>>({});
 	let projectMemoryDrafts = $state<Record<string, string>>({});
+	let archivedSessions = $state<ChatSession[]>([]);
+	let restoringSessionId = $state('');
 	const projectMemoryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	function update(partial: Partial<Settings>) {
@@ -119,6 +130,10 @@
 		projectMemoryDrafts = Object.fromEntries(
 			memoryProjects.map((project) => [project.id, project.memory || ''])
 		);
+	}
+
+	async function loadArchive() {
+		archivedSessions = await listArchivedSessions();
 	}
 
 	function toggleMemoryProject(projectId: string) {
@@ -211,6 +226,7 @@
 		clearing = true;
 		try {
 			await db.sessions.toCollection().modify({ archived: 1 as const });
+			await loadArchive();
 			clearDialogOpen = false;
 			onSessionsCleared();
 		} catch (err) {
@@ -259,6 +275,7 @@
 			const raw = await file.text();
 			const payload = JSON.parse(raw);
 			const result = await importChatHistory(payload);
+			await loadArchive();
 			onSessionsImported();
 			importStatusType = 'success';
 			importStatus = `${result.imported} އާ ޗެޓް، ${result.updated} އަޕްޑޭޓް، ${result.skipped} ސްކިޕް ކުރެވިއްޖެ.`;
@@ -273,12 +290,26 @@
 		}
 	}
 
+	async function restoreArchivedSession(id: string) {
+		restoringSessionId = id;
+		try {
+			await restoreSession(id);
+			await loadArchive();
+			onSessionsImported();
+		} catch (err) {
+			console.error('Failed to restore chat:', err);
+		} finally {
+			restoringSessionId = '';
+		}
+	}
+
 	function getInitials(name?: string | null) {
 		return (name?.trim()?.[0] ?? 'R').toUpperCase();
 	}
 
 	onMount(() => {
 		loadMemoryProjects();
+		loadArchive();
 	});
 
 	onDestroy(() => {
@@ -296,6 +327,7 @@
 	const sections: { value: SettingsSection; label: string; icon: typeof UserRound }[] = [
 		{ value: 'general', label: 'ޖެނެރަލް', icon: UserRound },
 		{ value: 'memories', label: 'ހަނދާންތައް', icon: Bot },
+		{ value: 'archive', label: 'Archive', icon: Archive },
 		{ value: 'byok', label: 'BYOK', icon: KeyRound },
 		{ value: 'importExport', label: 'އިމްޕޯޓް / އެކްސްޕޯޓް', icon: FileJson }
 	];
@@ -647,6 +679,61 @@
 											{/if}
 										</div>
 									{/each}
+								{/if}
+							</div>
+						</section>
+					</div>
+				{:else if activeSection === 'archive'}
+					<div class="space-y-10">
+						<section>
+							<h2 class="thaana-heading text-2xl font-semibold tracking-normal text-foreground">Archive</h2>
+							<p class="thaana mt-2 max-w-3xl text-sm text-muted-foreground">
+								އާކައިވް ކުރެވިފައި ހުރި ޗެޓްތައް މިތާ ފެންނާނެ. އަނބުރާ ގެންނަ ޗެޓްތައް ޗެޓް ހިސްޓްރީއަށް އަނބުރާ ދާނެ.
+							</p>
+
+							<div class="mt-6 overflow-hidden rounded-[24px] border border-border/70 bg-card/40">
+								{#if archivedSessions.length === 0}
+									<div class="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+										<MessageSquareDashed class="h-12 w-12 text-muted-foreground/30" />
+										<div>
+											<div class="thaana text-base font-medium text-foreground">އާކައިވް ހުސް</div>
+											<p class="thaana mt-1 text-sm text-muted-foreground">
+												ޗެޓެއް އާކައިވް ކުރާއިރު މިތާ ފެންނާނެ.
+											</p>
+										</div>
+									</div>
+								{:else}
+									<div class="divide-y divide-border/70">
+										{#each archivedSessions as session (session.id)}
+											<div class="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-6">
+												<div class="min-w-0">
+													<div class="thaana truncate text-base font-medium text-foreground">
+														{session.title}
+													</div>
+													<div class="thaana mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+														<span>{formatRelativeTime(session.updatedAt)}</span>
+														<span dir="ltr">{session.model}</span>
+													</div>
+												</div>
+												<div class="flex flex-wrap gap-2">
+													<button
+														onclick={() => restoreArchivedSession(session.id)}
+														disabled={restoringSessionId === session.id}
+														class="inline-flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2.5 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+													>
+														<RotateCcw class="h-4 w-4" />
+														<span class="thaana">
+															{#if restoringSessionId === session.id}
+																އަނބުރާ ގެންނަނީ...
+															{:else}
+																އަނބުރާ ގެންނޭ
+															{/if}
+														</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
 								{/if}
 							</div>
 						</section>

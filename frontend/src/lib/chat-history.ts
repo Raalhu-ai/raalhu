@@ -116,6 +116,14 @@ export async function listSessions(): Promise<ChatSession[]> {
 		.toArray();
 }
 
+export async function listArchivedSessions(): Promise<ChatSession[]> {
+	return db.sessions
+		.where('[archived+updatedAt]')
+		.between([1, Dexie.minKey], [1, Dexie.maxKey])
+		.reverse()
+		.toArray();
+}
+
 export async function getSession(id: string): Promise<ChatSession | undefined> {
 	return db.sessions.get(id);
 }
@@ -126,6 +134,10 @@ export async function renameSession(id: string, newTitle: string): Promise<void>
 
 export async function archiveSession(id: string): Promise<void> {
 	await db.sessions.update(id, { archived: 1, updatedAt: Date.now() });
+}
+
+export async function restoreSession(id: string): Promise<void> {
+	await db.sessions.update(id, { archived: 0, updatedAt: Date.now() });
 }
 
 export async function deleteSession(id: string): Promise<void> {
