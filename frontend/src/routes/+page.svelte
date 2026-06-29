@@ -33,6 +33,15 @@
 	import type { ProjectContext } from '$lib/project-context';
 	import type { AttachedFile, ChatInputSendData } from '$lib/components/ChatInput.svelte';
 
+	type MountedChat = {
+		initialMessages: AgentMessage[];
+		initialUserMessage: string;
+		initialUserFiles: AttachedFile[];
+		projectContext?: ProjectContext;
+		incognito: boolean;
+		running: boolean;
+	};
+
 	// --- App state ---
 	let appState = $state<'loading' | 'login' | 'setup' | 'dashboard' | 'chat' | 'project' | 'settings'>('loading');
 	let user = $state<User | null>(null);
@@ -50,14 +59,12 @@
 	let incognitoActive = $state(false);
 
 	// --- Agent state ---
-	let agentInitialMessages = $state<AgentMessage[]>([]);
-	let pendingUserMessage = $state('');
-	let pendingUserFiles = $state<AttachedFile[]>([]);
 	let activeProjectContext = $state<ProjectContext | undefined>(undefined);
 
 	// --- Session history ---
 	let sessions = $state<ChatSession[]>([]);
 	let activeSessionId = $state<string | null>(null);
+	let mountedChats = $state<Record<string, MountedChat>>({});
 
 	// --- Projects ---
 	let projects = $state<Project[]>([]);
@@ -85,9 +92,7 @@
 		}
 	});
 
-	const activeSessionTitle = $derived(
-		activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title ?? '' : ''
-	);
+	const mountedChatIds = $derived(Object.keys(mountedChats));
 
 	const selectedModelQuota = $derived(
 		quotas.find((q) => q.modelId === selectedModel)
@@ -121,6 +126,42 @@
 	function switchToCodeAssistProxy() {
 		switchToProxy();
 		modelProvider = 'proxy';
+	}
+
+	function getSessionTitle(id: string): string {
+		return sessions.find((s) => s.id === id)?.title ?? '';
+	}
+
+	function mountChat(id: string, chat: Omit<MountedChat, 'running'>) {
+		mountedChats = {
+			...mountedChats,
+			[id]: {
+				...chat,
+				running: mountedChats[id]?.running ?? false
+			}
+		};
+	}
+
+	function unmountChat(id: string) {
+		const { [id]: _removed, ...rest } = mountedChats;
+		mountedChats = rest;
+	}
+
+	function pruneInactiveIdleChat(id: string | null) {
+		if (!id || id === activeSessionId || mountedChats[id]?.running) return;
+		unmountChat(id);
+	}
+
+	function handleChatRunningChange(id: string, running: boolean) {
+		const chat = mountedChats[id];
+		if (!chat) return;
+		mountedChats = {
+			...mountedChats,
+			[id]: { ...chat, running }
+		};
+		if (!running && id !== activeSessionId) {
+			unmountChat(id);
+		}
 	}
 
 	onMount(async () => {
@@ -243,8 +284,6 @@
 		activeProjectId = id;
 		activeProject = proj;
 		activeSessionId = null;
-		agentInitialMessages = [];
-		pendingUserMessage = '';
 		activeProjectContext = undefined;
 		appState = 'project';
 		sidebarOpen = false;
@@ -268,16 +307,22 @@
 		const text = typeof data === 'string' ? data : data.message.trim();
 		const files = typeof data === 'string' ? [] : data.files;
 		const sessionId = crypto.randomUUID();
+		const previousSessionId = activeSessionId;
 		activeSessionId = sessionId;
-		agentInitialMessages = [];
-		pendingUserMessage = text;
-		pendingUserFiles = files;
 
 		// Incognito mode: skip project context and skip session persistence entirely
 		if (incognitoActive) {
 			activeProjectId = null;
 			activeProject = null;
 			activeProjectContext = undefined;
+			mountChat(sessionId, {
+				initialMessages: [],
+				initialUserMessage: text,
+				initialUserFiles: files,
+				projectContext: undefined,
+				incognito: true
+			});
+			pruneInactiveIdleChat(previousSessionId);
 			appState = 'chat';
 			return;
 		}
@@ -299,6 +344,14 @@
 		});
 		refreshSessions();
 
+		mountChat(sessionId, {
+			initialMessages: [],
+			initialUserMessage: text,
+			initialUserFiles: files,
+			projectContext: activeProjectContext,
+			incognito: false
+		});
+		pruneInactiveIdleChat(previousSessionId);
 		appState = 'chat';
 		history.replaceState(history.state, '', `/chat/${sessionId}`);
 	}
@@ -330,18 +383,17 @@
 	}
 
 	async function resetToDashboard(keepTab = false) {
+		const previousSessionId = activeSessionId;
 		activeSessionId = null;
 		activeProjectId = null;
 		activeProject = null;
 		activeProjectContext = undefined;
-		agentInitialMessages = [];
-		pendingUserMessage = '';
-		pendingUserFiles = [];
 		creatingProject = false;
 		creatingArtifact = false;
 		selectedInspirationId = null;
 		if (!keepTab) { showingProjects = false; showingArtifacts = false; }
 		appState = 'dashboard';
+		pruneInactiveIdleChat(previousSessionId);
 	}
 
 	async function goBackToDashboard() {
@@ -355,6 +407,7 @@
 	async function loadSession(id: string): Promise<boolean> {
 		const session = await getSession(id);
 		if (!session) return false;
+		const previousSessionId = activeSessionId;
 
 		// Load all data BEFORE setting activeSessionId — {#key} remounts AgentChat
 		// immediately when activeSessionId changes, so props must be ready first
@@ -371,14 +424,22 @@
 		}
 
 		// Set all state then trigger render — activeSessionId last since {#key} depends on it
-		agentInitialMessages = msgs;
-		pendingUserMessage = '';
 		activeProjectId = projId;
 		activeProject = proj;
 		activeProjectContext = projCtx;
+		if (!mountedChats[id]) {
+			mountChat(id, {
+				initialMessages: msgs,
+				initialUserMessage: '',
+				initialUserFiles: [],
+				projectContext: projCtx,
+				incognito: false
+			});
+		}
 		activeSessionId = id;
 		appState = 'chat';
 		sidebarOpen = false;
+		pruneInactiveIdleChat(previousSessionId);
 		return true;
 	}
 
@@ -398,12 +459,11 @@
 		await refreshSessions();
 		if (activeSessionId === id) {
 			activeSessionId = null;
-			agentInitialMessages = [];
-			pendingUserMessage = '';
 			activeProjectContext = undefined;
 			appState = 'dashboard';
 			history.replaceState(history.state, '', '/');
 		}
+		unmountChat(id);
 	}
 </script>
 
@@ -630,31 +690,38 @@
 					onSessionsCleared={refreshSessions}
 					onSessionsImported={refreshSessions}
 				/>
-			{:else if appState === 'chat' && activeSessionId}
-				{#key activeSessionId}
-				<div class="flex-1 overflow-hidden h-full">
+			{/if}
+
+			{#each mountedChatIds as chatId (chatId)}
+				{@const chat = mountedChats[chatId]}
+				<div class="{appState === 'chat' && activeSessionId === chatId ? 'flex-1 overflow-hidden h-full' : 'hidden'}">
 					<AgentChat
 						bind:model={selectedModel}
-							{models}
-							{modelProvider}
-							{quotaExhausted}
-						sessionId={activeSessionId}
-						initialMessages={agentInitialMessages}
-						initialUserMessage={pendingUserMessage}
-						initialUserFiles={pendingUserFiles}
-						title={activeSessionTitle}
-						projectContext={activeProjectContext}
-						onRename={(newTitle) => activeSessionId && handleRename(activeSessionId, newTitle)}
-						onDelete={() => activeSessionId && handleArchive(activeSessionId)}
+						{models}
+						{modelProvider}
+						{quotaExhausted}
+						sessionId={chatId}
+						initialMessages={chat.initialMessages}
+						initialUserMessage={chat.initialUserMessage}
+						initialUserFiles={chat.initialUserFiles}
+						title={getSessionTitle(chatId)}
+						projectContext={chat.projectContext}
+						onRename={(newTitle) => handleRename(chatId, newTitle)}
+						onDelete={() => handleArchive(chatId)}
 						onRefreshSessions={refreshSessions}
-						onArtifactOpen={() => { sidebarOpen = false; sidebarCollapsed = true; }}
-						incognito={incognitoActive}
-							onExitIncognito={exitIncognito}
-							onSwitchToProxy={switchToCodeAssistProxy}
-						/>
+						onRunningChange={(running) => handleChatRunningChange(chatId, running)}
+						onArtifactOpen={() => {
+							if (activeSessionId === chatId) {
+								sidebarOpen = false;
+								sidebarCollapsed = true;
+							}
+						}}
+						incognito={chat.incognito}
+						onExitIncognito={exitIncognito}
+						onSwitchToProxy={switchToCodeAssistProxy}
+					/>
 				</div>
-				{/key}
-			{/if}
+			{/each}
 
 			</div><!-- /incognito card wrapper -->
 		</div>

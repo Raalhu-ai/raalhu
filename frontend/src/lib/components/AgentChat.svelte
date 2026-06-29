@@ -43,6 +43,7 @@
 		onRename = (_title: string) => {},
 		onDelete = () => {},
 		onRefreshSessions = () => {},
+		onRunningChange = (_running: boolean) => {},
 		onArtifactOpen = () => {},
 		title = '',
 			projectContext = undefined,
@@ -61,6 +62,7 @@
 		onRename?: (title: string) => void;
 		onDelete?: () => void;
 		onRefreshSessions?: () => void;
+		onRunningChange?: (running: boolean) => void;
 		onArtifactOpen?: () => void;
 		title?: string;
 			projectContext?: ProjectContext;
@@ -429,7 +431,7 @@
 	onDestroy(() => {
 		console.log('[AgentChat] Destroying');
 		stopVerbCycle();
-		sandbox.destroy();
+		if (!running) sandbox.destroy();
 	});
 
 	// Auto-scroll
@@ -497,6 +499,7 @@
 
 		contents = buildContents(contents, text, imageParts);
 		running = true;
+		onRunningChange(true);
 		sandboxLoading = false;
 		startVerbCycle();
 
@@ -685,6 +688,7 @@
 		}
 
 		running = false;
+		onRunningChange(false);
 		stopVerbCycle();
 
 		// Auto-focus chat input on desktop when streaming ends
