@@ -53,7 +53,12 @@ app.use(
 			'X-AI-API-Key',
 			'X-Gemini-API-Key'
 		],
-		exposeHeaders: ['Set-Cookie']
+			exposeHeaders: [
+				'Set-Cookie',
+				'X-Resolved-Model-Module',
+				'X-Resolved-AI-Provider',
+				'X-BYOK-Error-Origin'
+			]
 	})
 );
 

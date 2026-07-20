@@ -1,4 +1,5 @@
 import type { RequestHandler } from './$types';
+import { modelResponseHeaders } from '$lib/model-response-headers';
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const BACKEND = (platform?.env as any)?.BACKEND_URL || 'http://localhost:3000';
@@ -40,15 +41,15 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		console.error(`[stream proxy] Backend error ${backendRes.status}:`, err.slice(0, 500));
 		return new Response(err, {
 			status: backendRes.status,
-			headers: { 'Content-Type': 'text/plain' }
+			headers: modelResponseHeaders(backendRes.headers, { 'Content-Type': 'text/plain' })
 		});
 	}
 
 	return new Response(backendRes.body, {
-		headers: {
+		headers: modelResponseHeaders(backendRes.headers, {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache',
 			Connection: 'keep-alive'
-		}
+		})
 	});
 };

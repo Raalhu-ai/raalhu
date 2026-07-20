@@ -11,6 +11,38 @@ export type ModelRoute = {
 	apiKey?: string;
 };
 
+export const RESOLVED_MODEL_MODULE_HEADER = 'X-Resolved-Model-Module';
+export const RESOLVED_AI_PROVIDER_HEADER = 'X-Resolved-AI-Provider';
+export const BYOK_ERROR_ORIGIN_HEADER = 'X-BYOK-Error-Origin';
+
+export function getModelRouteResponseHeaders(
+	route: ModelRoute,
+	providerFailure = false
+): Record<string, string> {
+	const headers: Record<string, string> = {
+		[RESOLVED_MODEL_MODULE_HEADER]: route.module
+	};
+	if (route.provider) headers[RESOLVED_AI_PROVIDER_HEADER] = route.provider;
+	if (providerFailure) headers[BYOK_ERROR_ORIGIN_HEADER] = 'provider';
+	return headers;
+}
+
+function withModelRouteHeaders(
+	response: Response,
+	route: ModelRoute,
+	providerFailure = false
+): Response {
+	const headers = new Headers(response.headers);
+	for (const [name, value] of Object.entries(getModelRouteResponseHeaders(route, providerFailure))) {
+		headers.set(name, value);
+	}
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers
+	});
+}
+
 export type GeminiRequestBody = {
 	model?: string;
 	contents: Array<{ role: string; parts: Record<string, any>[] }>;
@@ -227,7 +259,9 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 			const emittedToolCalls = new Set<string>();
 			try {
 				for await (const chunk of result.fullStream) {
-					if (chunk.type === 'text-delta' && chunk.text) {
+					if (chunk.type === 'error') {
+						throw chunk.error;
+					} else if (chunk.type === 'text-delta' && chunk.text) {
 						controller.enqueue(
 							encoder.encode(
 								`data: ${JSON.stringify(
@@ -299,7 +333,15 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 				controller.close();
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
+				controller.enqueue(
+					encoder.encode(
+						`data: ${JSON.stringify({
+							error: message,
+							errorOrigin: 'provider',
+							provider: route.provider
+						})}\n\n`
+					)
+				);
 				controller.enqueue(encoder.encode('data: [DONE]\n\n'));
 				controller.close();
 			}
@@ -402,45 +444,45 @@ export async function generateModel(route: ModelRoute, body: GeminiRequestBody, 
 	if (route.module === 'ai-sdk') {
 		try {
 			const data = await generateWithAiSdk(route, body);
-			return new Response(JSON.stringify(data), {
+			return withModelRouteHeaders(new Response(JSON.stringify(data), {
 				headers: { 'Content-Type': 'application/json' }
-			});
+			}), route);
 		} catch (err) {
-			return new Response(
+			return withModelRouteHeaders(new Response(
 				JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
 				{
 					status: 502,
 					headers: { 'Content-Type': 'application/json' }
 				}
-			);
+			), route, true);
 		}
 	}
 
-	return generateWithProxy(session, body);
+	return withModelRouteHeaders(await generateWithProxy(session, body), route);
 }
 
 export async function streamModel(route: ModelRoute, body: GeminiRequestBody, session: SessionData) {
 	if (route.module === 'ai-sdk') {
 		try {
 			const stream = await streamWithAiSdk(route, body);
-			return new Response(stream, {
+			return withModelRouteHeaders(new Response(stream, {
 				headers: {
 					'Content-Type': 'text/event-stream',
 					'Cache-Control': 'no-cache',
 					Connection: 'keep-alive',
 					'X-Accel-Buffering': 'no'
 				}
-			});
+			}), route);
 		} catch (err) {
-			return new Response(
+			return withModelRouteHeaders(new Response(
 				JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
 				{
 					status: 502,
 					headers: { 'Content-Type': 'application/json' }
 				}
-			);
+			), route, true);
 		}
 	}
 
-	return streamWithProxy(session, body);
+	return withModelRouteHeaders(await streamWithProxy(session, body), route);
 }

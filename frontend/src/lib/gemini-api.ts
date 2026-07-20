@@ -6,6 +6,13 @@ import {
 	type ModelModule,
 	type Settings
 } from './settings';
+import {
+	dispatchByokRuntimeEvent,
+	recordByokFailure,
+	resetByokFailureCount,
+	type ByokOperation,
+	type ByokRuntimeEventKind
+} from './byok-runtime';
 
 const AI_PROVIDER_HEADER = 'X-AI-Provider';
 const AI_API_KEY_HEADER = 'X-AI-API-Key';
@@ -14,6 +21,17 @@ const LEGACY_GEMINI_API_KEY_HEADER = 'X-Gemini-API-Key';
 const RESOLVED_MODEL_MODULE_HEADER = 'X-Resolved-Model-Module';
 const RESOLVED_AI_PROVIDER_HEADER = 'X-Resolved-AI-Provider';
 const MODEL_FALLBACK_HEADER = 'X-Model-Fallback';
+const BYOK_ERROR_ORIGIN_HEADER = 'X-BYOK-Error-Origin';
+
+export interface ModelRequestOptions {
+	operation?: ByokOperation;
+	completion?: 'response' | 'stream';
+}
+
+export interface ByokFailureResult {
+	failureCount: number;
+	disabled: boolean;
+}
 
 export type { AiProvider, ByokKeyStatus, ModelModule };
 export type ModelProvider = ModelModule;
@@ -60,6 +78,10 @@ export const AI_PROVIDERS: Record<AiProvider, AiProviderConfig> = {
 		modelPrefixes: ['claude-']
 	}
 };
+
+function isAiProvider(value: string | null): value is AiProvider {
+	return value === 'google' || value === 'openai' || value === 'anthropic';
+}
 
 export function getProviderForModel(modelId: string): AiProvider | undefined {
 	return (Object.values(AI_PROVIDERS) as AiProviderConfig[]).find((provider) =>
@@ -151,18 +173,55 @@ export async function validateProviderKey(provider: AiProvider): Promise<ByokKey
 	}
 }
 
-export function markProviderKeyFailed(provider: AiProvider, error: unknown): void {
+export function markByokRequestSucceeded(provider: AiProvider): void {
+	resetByokFailureCount(provider);
+}
+
+export function markResolvedByokRequestSucceeded(response: Response): void {
+	if (response.headers.get(RESOLVED_MODEL_MODULE_HEADER) !== 'ai-sdk') return;
+	const provider = response.headers.get(RESOLVED_AI_PROVIDER_HEADER);
+	if (isAiProvider(provider)) markByokRequestSucceeded(provider);
+}
+
+export function recordByokRuntimeFailure(
+	provider: AiProvider,
+	error: unknown,
+	options: {
+		fallbackUsed: boolean;
+		operation: ByokOperation;
+		kind?: Exclude<ByokRuntimeEventKind, 'disabled'>;
+	}
+): ByokFailureResult {
 	const message = error instanceof Error ? error.message : String(error);
-	updateProviderKeyStatus(provider, 'invalid', message || 'BYOK request failed');
+	const failureCount = recordByokFailure(provider);
+	const disabled = failureCount >= 3;
+
+	if (disabled) {
+		updateProviderKeyStatus(provider, 'invalid', message || 'BYOK request failed three times');
+	}
+
+	dispatchByokRuntimeEvent({
+		kind: disabled ? 'disabled' : (options.kind ?? 'fallback'),
+		provider,
+		failureCount,
+		fallbackUsed: options.fallbackUsed,
+		operation: options.operation,
+		message: message || 'BYOK request failed'
+	});
+
+	return { failureCount, disabled };
 }
 
 export async function fetchWithModelFallback(
 	input: RequestInfo | URL,
 	init: RequestInit,
 	modelId: string,
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	options: ModelRequestOptions = {}
 ): Promise<Response> {
 	const route = resolveModelRoute(modelId);
+	const operation = options.operation ?? 'chat';
+	const completion = options.completion ?? 'response';
 	const withRouteHeaders = {
 		...(init.headers as Record<string, string> | undefined),
 		...route.headers
@@ -174,23 +233,39 @@ export async function fetchWithModelFallback(
 			headers: withRouteHeaders
 		});
 	} catch (err) {
-		if (route.module !== 'ai-sdk' || !route.provider) throw err;
-		markProviderKeyFailed(route.provider, err);
-		const proxyResponse = await fetcher(input, {
-			...init,
-			headers: proxyHeaders(init.headers)
-		});
-		return tagResolvedResponse(proxyResponse, 'proxy', undefined, true);
+		// A browser/relay/network exception cannot be attributed to the provider.
+		// Do not penalize the key or silently change routes.
+		throw err;
 	}
 
-	if (response.ok) return tagResolvedResponse(response, route.module, route.provider);
+	if (response.ok) {
+		if (route.module === 'ai-sdk' && route.provider && completion === 'response') {
+			markByokRequestSucceeded(route.provider);
+		}
+		return tagResolvedResponse(response, route.module, route.provider);
+	}
 	if (route.module !== 'ai-sdk' || !route.provider) {
+		return tagResolvedResponse(response, route.module, route.provider);
+	}
+	if (response.headers.get(BYOK_ERROR_ORIGIN_HEADER) !== 'provider') {
 		return tagResolvedResponse(response, route.module, route.provider);
 	}
 
 	const errorText = await response.text().catch(() => '');
-	markProviderKeyFailed(route.provider, errorText || `BYOK request failed with ${response.status}`);
+	recordByokRuntimeFailure(
+		route.provider,
+		errorText || `BYOK request failed with ${response.status}`,
+		{ fallbackUsed: true, operation }
+	);
 
+	return fetchProxyFallback(input, init, fetcher);
+}
+
+export async function fetchProxyFallback(
+	input: RequestInfo | URL,
+	init: RequestInit,
+	fetcher: typeof fetch = fetch
+): Promise<Response> {
 	const proxyResponse = await fetcher(input, {
 		...init,
 		headers: proxyHeaders(init.headers)
@@ -236,6 +311,7 @@ function tagResolvedResponse(
 }
 
 export function setProviderKey(provider: AiProvider, key: string): void {
+	resetByokFailureCount(provider);
 	const settings = loadSettings();
 	saveSettings({
 		...settings,
@@ -248,6 +324,7 @@ export function setProviderKey(provider: AiProvider, key: string): void {
 }
 
 export function clearProviderKey(provider: AiProvider): void {
+	resetByokFailureCount(provider);
 	const settings = loadSettings();
 	saveSettings({
 		...settings,
@@ -265,6 +342,7 @@ export function updateProviderKeyStatus(
 	status: ByokKeyStatus,
 	error = ''
 ): void {
+	if (status === 'valid') resetByokFailureCount(provider);
 	const settings = loadSettings();
 	const hasValidKey = status === 'valid' && !!settings.byokKeys[provider]?.trim();
 	saveSettings({

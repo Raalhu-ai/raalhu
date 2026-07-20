@@ -3,7 +3,14 @@ import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, 
 import { AGENT_TOOLS } from './tools';
 import { executeToolCall } from './executor';
 import { fetchWithRetry, TerminalQuotaError } from './retry';
-import { fetchWithModelFallback, markProviderKeyFailed, type AiProvider } from '$lib/gemini-api';
+import { canReplayByokStream } from '$lib/byok-runtime';
+import {
+	fetchProxyFallback,
+	fetchWithModelFallback,
+	markResolvedByokRequestSucceeded,
+	recordByokRuntimeFailure,
+	type AiProvider
+} from '$lib/gemini-api';
 
 const MAX_TURNS = 15;
 
@@ -25,6 +32,8 @@ interface TurnAccumulator {
 	functionCalls: { name: string; args: Record<string, unknown> }[];
 	textContent: string;
 	streamError?: string;
+	streamErrorOrigin?: string;
+	streamErrorProvider?: AiProvider;
 }
 
 /**
@@ -71,6 +80,11 @@ async function* streamGeminiTurn(
 	for await (const chunk of parseSSEStream(response)) {
 		if (chunk?.error) {
 			acc.streamError = `Gemini API error: ${chunk.error}`;
+			acc.streamErrorOrigin = typeof chunk.errorOrigin === 'string' ? chunk.errorOrigin : undefined;
+			acc.streamErrorProvider =
+				chunk.provider === 'google' || chunk.provider === 'openai' || chunk.provider === 'anthropic'
+					? chunk.provider
+					: undefined;
 			return;
 		}
 
@@ -143,13 +157,23 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			toolCount: AGENT_TOOLS[0]?.functionDeclarations?.length
 		});
 
-		async function requestTurnStream(): Promise<Response> {
+		const requestInit: RequestInit = {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(reqBody)
+		};
+
+		async function requestTurnStream(useProxy = false): Promise<Response> {
 			const t0 = performance.now();
-			const response = await fetchWithModelFallback('/api/stream', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(reqBody)
-			}, model, fetchWithRetry);
+			const response = useProxy
+				? await fetchProxyFallback('/api/stream', requestInit, fetchWithRetry)
+				: await fetchWithModelFallback(
+					'/api/stream',
+					requestInit,
+					model,
+					fetchWithRetry,
+					{ operation: 'chat', completion: 'stream' }
+				);
 			console.log(`[AgentLoop] Response status=${response.status} (${(performance.now() - t0).toFixed(0)}ms)`);
 
 			if (!response.ok) {
@@ -188,20 +212,34 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			yield event;
 		}
 
-		if (
-			acc.streamError &&
+		const resolvedProvider = response.headers.get('X-Resolved-AI-Provider') as AiProvider | null;
+		const isProviderStreamError =
+			!!acc.streamError &&
+			acc.streamErrorOrigin === 'provider' &&
 			response.headers.get('X-Resolved-Model-Module') === 'ai-sdk' &&
-			response.headers.get('X-Resolved-AI-Provider') &&
-			acc.rawParts.length === 0 &&
-			acc.functionCalls.length === 0 &&
-			acc.textContent.length === 0
-		) {
-			const provider = response.headers.get('X-Resolved-AI-Provider') as AiProvider;
+			!!resolvedProvider &&
+			(!acc.streamErrorProvider || acc.streamErrorProvider === resolvedProvider);
+		const hasStreamOutput = !canReplayByokStream({
+			rawPartCount: acc.rawParts.length,
+			functionCallCount: acc.functionCalls.length,
+			textLength: acc.textContent.length
+		});
+
+		if (isProviderStreamError && resolvedProvider) {
+			recordByokRuntimeFailure(resolvedProvider, acc.streamError!, {
+				fallbackUsed: !hasStreamOutput,
+				operation: 'chat',
+				kind: hasStreamOutput ? 'stream-interrupted' : 'fallback'
+			});
+		}
+
+		if (isProviderStreamError && resolvedProvider && !hasStreamOutput) {
 			console.warn(`[AgentLoop] BYOK stream failed before content; retrying through proxy: ${acc.streamError}`);
-			markProviderKeyFailed(provider, acc.streamError);
 			try {
-				response = await requestTurnStream();
+				response = await requestTurnStream(true);
 				acc.streamError = undefined;
+				acc.streamErrorOrigin = undefined;
+				acc.streamErrorProvider = undefined;
 				for await (const event of streamGeminiTurn(response, acc)) {
 					yield event;
 				}
@@ -216,6 +254,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			yield { type: 'error', message: acc.streamError };
 			return;
 		}
+
+		markResolvedByokRequestSucceeded(response);
 
 		console.log(`[AgentLoop] Turn streamed: ${acc.rawParts.length} parts, ${acc.functionCalls.length} functionCalls, ${acc.textContent.length} chars text`);
 		if (acc.functionCalls.length > 0) {

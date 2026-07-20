@@ -16,6 +16,7 @@
 		Download,
 		Upload,
 		FileJson,
+		FileText,
 		Archive,
 		RotateCcw,
 		MessageSquareDashed
@@ -40,6 +41,7 @@
 	import {
 		deleteSession,
 		exportChatHistory,
+		exportChatHistoryText,
 		formatRelativeTime,
 		importChatHistory,
 		listArchivedSessions,
@@ -281,6 +283,31 @@
 			console.error('Failed to export chats:', err);
 			importStatusType = 'error';
 			importStatus = 'ޗެޓް ހިސްޓްރީ އެކްސްޕޯޓް ނުކުރެވުނު.';
+		} finally {
+			exportingChats = false;
+		}
+	}
+
+	async function exportChatsText() {
+		exportingChats = true;
+		importStatusType = 'idle';
+		importStatus = '';
+		try {
+			const text = await exportChatHistoryText();
+			const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+			const url = URL.createObjectURL(blob);
+			const date = new Date().toISOString().slice(0, 10);
+			const anchor = document.createElement('a');
+			anchor.href = url;
+			anchor.download = `raalhu-chat-history-${date}.txt`;
+			document.body.appendChild(anchor);
+			anchor.click();
+			anchor.remove();
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error('Failed to export chat transcript:', err);
+			importStatusType = 'error';
+			importStatus = 'ޗެޓް ހިސްޓްރީ ޓެކްސްޓް އެކްސްޕޯޓް ނުކުރެވުނު.';
 		} finally {
 			exportingChats = false;
 		}
@@ -1002,22 +1029,38 @@
 									</div>
 									<div class="space-y-3 px-4 md:px-0">
 										<p class="thaana max-w-2xl text-sm text-muted-foreground">
-											މި ޑިވައިސްގެ ހުރިހާ ޗެޓްތައް، އާކައިވް ކުރެވިފައި ހުރި ޗެޓްތަކާ އެކު، JSON ފައިލަކަށް ޑައުންލޯޑް ކުރޭ.
+											މި ޑިވައިސްގެ ހުރިހާ ޗެޓްތައް، އާކައިވް ކުރެވިފައި ހުރި ޗެޓްތަކާ އެކު، JSON ފައިލަކަށް ނުވަތަ ކިޔޭނެ ޓެކްސްޓް ފައިލަކަށް ޑައުންލޯޑް ކުރޭ.
 										</p>
-										<button
-											onclick={exportChats}
-											disabled={exportingChats}
-											class="inline-flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2.5 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
-										>
-											<Download class="h-4 w-4" />
-											<span class="thaana">
-												{#if exportingChats}
-													އެކްސްޕޯޓް ކުރަނީ...
-												{:else}
-													ޗެޓް ހިސްޓްރީ އެކްސްޕޯޓް
-												{/if}
-											</span>
-										</button>
+										<div class="flex flex-wrap gap-2">
+											<button
+												onclick={exportChats}
+												disabled={exportingChats}
+												class="inline-flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2.5 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+											>
+												<Download class="h-4 w-4" />
+												<span class="thaana">
+													{#if exportingChats}
+														އެކްސްޕޯޓް ކުރަނީ...
+													{:else}
+														JSON އެކްސްޕޯޓް
+													{/if}
+												</span>
+											</button>
+											<button
+												onclick={exportChatsText}
+												disabled={exportingChats}
+												class="inline-flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2.5 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+											>
+												<FileText class="h-4 w-4" />
+												<span class="thaana">
+													{#if exportingChats}
+														އެކްސްޕޯޓް ކުރަނީ...
+													{:else}
+														ޓެކްސްޓް އެކްސްޕޯޓް
+													{/if}
+												</span>
+											</button>
+										</div>
 									</div>
 								</div>
 

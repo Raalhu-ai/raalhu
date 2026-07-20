@@ -21,6 +21,13 @@ export interface ChatHistoryImportResult {
 	total: number;
 }
 
+type TranscriptMessage = {
+	role: string;
+	content: string;
+	imageCount?: number;
+	steps?: unknown[];
+};
+
 export function serializeMessages(messages: Message[]): SerializedMessage[] {
 	return messages.map((m) => ({
 		id: m.id,
@@ -234,6 +241,118 @@ export async function exportChatHistory(): Promise<ChatHistoryExport> {
 	};
 }
 
+function formatExportDate(value: number | string | undefined): string {
+	if (typeof value === 'number' && Number.isFinite(value)) return new Date(value).toISOString();
+	if (typeof value === 'string' && value.trim()) return value;
+	return 'Unknown';
+}
+
+function normalizeTranscriptRole(role: string): string {
+	if (role === 'user') return 'User';
+	if (role === 'assistant') return 'Assistant';
+	if (role === 'system') return 'System';
+	return role || 'Message';
+}
+
+function getStepText(step: unknown, includeText = true): string {
+	if (!isRecord(step) || typeof step.kind !== 'string') return '';
+	if (step.kind === 'text' && typeof step.content === 'string') return includeText ? step.content : '';
+	if (step.kind === 'artifact') {
+		const label = normalizeString(step.label, 'Artifact');
+		const filename = normalizeString(step.filename);
+		return filename ? `[Artifact: ${label} (${filename})]` : `[Artifact: ${label}]`;
+	}
+	if (step.kind === 'message-compose' && isRecord(step.data)) {
+		return `[Message draft: ${normalizeString(step.data.summaryTitle, 'Untitled')}]`;
+	}
+	if (step.kind === 'recipe-display' && isRecord(step.data)) {
+		return `[Recipe: ${normalizeString(step.data.title, 'Untitled')}]`;
+	}
+	if (step.kind === 'show-widget' && isRecord(step.data)) {
+		return `[Widget: ${normalizeString(step.data.title, 'Untitled')}]`;
+	}
+	return '';
+}
+
+function parseAgentMessages(session: ChatSession): TranscriptMessage[] | null {
+	if (!session.agentMessages) return null;
+	try {
+		const messages = JSON.parse(session.agentMessages);
+		if (!Array.isArray(messages)) return null;
+		return messages
+			.filter(isRecord)
+			.map((message) => ({
+				role: normalizeString(message.role, 'message'),
+				content: normalizeString(message.content),
+				imageCount: normalizeNumber(message.imageCount, 0),
+				steps: Array.isArray(message.steps) ? message.steps : undefined
+			}));
+	} catch {
+		return null;
+	}
+}
+
+function getTranscriptMessages(session: ChatSession): TranscriptMessage[] {
+	const agentMessages = parseAgentMessages(session);
+	if (agentMessages) return agentMessages;
+	return session.messages.map((message) => ({
+		role: message.role,
+		content: message.content
+	}));
+}
+
+function formatTranscriptMessage(message: TranscriptMessage): string {
+	const chunks = [message.content.trim()];
+	const hasContent = Boolean(chunks[0]);
+	const stepText = message.steps
+		?.map((step) => getStepText(step, !hasContent))
+		.filter(Boolean)
+		.join('\n\n')
+		.trim();
+	if (!chunks[0] && stepText) chunks[0] = stepText;
+	if (chunks[0] && stepText) chunks.push(stepText);
+	if (message.imageCount && message.imageCount > 0) {
+		chunks.push(`[Attached images: ${message.imageCount}]`);
+	}
+	return `### ${normalizeTranscriptRole(message.role)}\n${chunks.filter(Boolean).join('\n\n') || '[No text content]'}`;
+}
+
+export async function exportChatHistoryText(): Promise<string> {
+	const sessions = (await db.sessions.toArray()).sort((a, b) => b.updatedAt - a.updatedAt);
+	const exportedAt = new Date().toISOString();
+	const lines = [
+		'Raalhu Chat History',
+		`Exported: ${exportedAt}`,
+		`Sessions: ${sessions.length}`,
+		''
+	];
+
+	for (const session of sessions) {
+		const messages = getTranscriptMessages(session);
+		lines.push(
+			'---',
+			'',
+			`# ${session.title || 'Chat'}`,
+			`ID: ${session.id}`,
+			`Created: ${formatExportDate(session.createdAt)}`,
+			`Updated: ${formatExportDate(session.updatedAt)}`,
+			`Status: ${session.archived === 1 ? 'Archived' : 'Active'}`,
+			`Model: ${session.model || 'Unknown'}`,
+			...(session.projectId ? [`Project ID: ${session.projectId}`] : []),
+			''
+		);
+
+		if (messages.length === 0) {
+			lines.push('[No messages]', '');
+			continue;
+		}
+
+		lines.push(messages.map(formatTranscriptMessage).join('\n\n'), '');
+	}
+
+	return `${lines.join('\n').trimEnd()}\n`;
+}
+
 export async function importChatHistory(payload: unknown): Promise<ChatHistoryImportResult> {
 	const parsed = assertChatHistoryExport(payload);
 	const result: ChatHistoryImportResult = {
@@ -345,7 +464,7 @@ export async function fetchAITitle(message: string): Promise<string> {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ message })
-		}, 'gemini-2.5-flash');
+		}, 'gemini-2.5-flash', fetch, { operation: 'title' });
 		if (!res.ok) return '';
 		const { title } = await res.json();
 		return (title || '').trim();

@@ -3,7 +3,7 @@
 	import {
 		Copy, Check, Download, ChevronDown, ChevronRight, ChevronLeft,
 		FileText, Paperclip,
-		Pencil, Trash2, X, ArrowLeft, KeyRound
+		Pencil, Trash2, X, ArrowLeft
 	} from 'lucide-svelte';
 	import ChatInput from './ChatInput.svelte';
 	import type { ChatInputSendData, AttachedFile } from './ChatInput.svelte';
@@ -48,8 +48,7 @@
 		title = '',
 			projectContext = undefined,
 			incognito = false,
-			onExitIncognito = () => {},
-			onSwitchToProxy = () => {}
+			onExitIncognito = () => {}
 		}: {
 			model: string;
 			models?: string[];
@@ -68,7 +67,6 @@
 			projectContext?: ProjectContext;
 			incognito?: boolean;
 			onExitIncognito?: () => void;
-			onSwitchToProxy?: () => void;
 		} = $props();
 
 	let messages = $state<AgentMessage[]>(initialMessages);
@@ -119,7 +117,6 @@
 		let renameValue = $state('');
 		let titleRequested = false;
 		let activeArtifact = $state<Artifact | null>(null);
-		let byokFailureMessage = $state('');
 
 	// --- Spinner verbs ---
 	const SPINNER_VERBS = [
@@ -415,19 +412,6 @@
 		}
 	});
 
-	onMount(() => {
-		const syncByokFallbackNotice = () => {
-			const settings = loadSettings();
-			if (settings.lastByokError && settings.activeModelModule === 'proxy') {
-				byokFailureMessage = `BYOK failed and the request was retried through proxy. ${settings.lastByokError}`;
-			}
-		};
-		const onSettingsChanged = () => syncByokFallbackNotice();
-		window.addEventListener('mogger-settings-changed', onSettingsChanged);
-		syncByokFallbackNotice();
-		return () => window.removeEventListener('mogger-settings-changed', onSettingsChanged);
-	});
-
 	onDestroy(() => {
 		console.log('[AgentChat] Destroying');
 		stopVerbCycle();
@@ -460,7 +444,6 @@
 			const text = data.message.trim();
 			const imageFiles = data.files.filter(f => f.type.startsWith('image/'));
 			if ((!text && imageFiles.length === 0) || running || quotaExhausted || !systemPromptReady) return;
-			byokFailureMessage = '';
 
 		console.log(`[AgentChat] ▶ User message: "${text.slice(0, 100)}${text.length > 100 ? '...' : ''}" (${imageFiles.length} image(s))`);
 
@@ -661,13 +644,10 @@
 						updateUI();
 						break;
 
-						case 'error':
-							if (modelProvider === 'ai-sdk') {
-								byokFailureMessage = event.message;
-							}
-							assistantMsg.content =
-								(assistantMsg.content ? assistantMsg.content + '\n\n' : '') +
-								`**Error:** ${event.message}`;
+					case 'error':
+						assistantMsg.content =
+							(assistantMsg.content ? assistantMsg.content + '\n\n' : '') +
+							`**Error:** ${event.message}`;
 						steps.push({ kind: 'text', content: `**Error:** ${event.message}` });
 						updateUI();
 						break;
@@ -677,9 +657,6 @@
 			flushUIUpdate();
 			} catch (err: any) {
 				console.error('[AgentChat] Agent loop error:', err);
-				if (modelProvider === 'ai-sdk') {
-					byokFailureMessage = err.message || 'Gemini BYOK request failed';
-				}
 				assistantMsg.content =
 					(assistantMsg.content ? assistantMsg.content + '\n\n' : '') +
 					`**Error:** ${err.message}`;
@@ -1065,24 +1042,6 @@
 				{#if quotaExhausted}
 					<div class="px-4 pt-2 pb-0">
 						<span class="thaana text-[10px] text-destructive">ކޯޓާ ހުސްވެއްޖެ</span>
-					</div>
-				{/if}
-				{#if byokFailureMessage}
-					<div class="px-4 pt-2 pb-0">
-						<div class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2">
-							<div class="flex flex-wrap items-center gap-2">
-								<KeyRound class="w-3.5 h-3.5 text-destructive" />
-								<span class="thaana text-xs text-destructive">BYOK ރިކުއެސްޓް ފޭލް ވެއްޖެ.</span>
-								<button
-									type="button"
-									onclick={() => { onSwitchToProxy(); byokFailureMessage = ''; }}
-									class="thaana rounded-md border border-destructive/30 px-2 py-1 text-[10px] text-destructive hover:bg-destructive/10 transition-colors"
-								>
-									ޕްރޮކްސީއަށް ބަދަލުކުރޭ
-								</button>
-							</div>
-							<div class="mt-1 text-[10px] text-destructive/80 break-words" dir="ltr">{byokFailureMessage}</div>
-						</div>
 					</div>
 				{/if}
 				<div class="p-4 pt-2">

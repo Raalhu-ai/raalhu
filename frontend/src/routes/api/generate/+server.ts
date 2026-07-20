@@ -1,4 +1,5 @@
 import type { RequestHandler } from './$types';
+import { modelResponseHeaders } from '$lib/model-response-headers';
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const BACKEND = (platform?.env as any)?.BACKEND_URL || 'http://localhost:3000';
@@ -44,7 +45,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	if (!backendRes.ok) {
 		const err = await backendRes.text();
 		console.error(`[generate proxy] Backend error:`, err.slice(0, 500));
-		return new Response(err, { status: backendRes.status });
+		return new Response(err, {
+			status: backendRes.status,
+			headers: modelResponseHeaders(backendRes.headers)
+		});
 	}
 
 	const data = await backendRes.json();
@@ -65,6 +69,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	return new Response(JSON.stringify(data), {
-		headers: { 'Content-Type': 'application/json' }
+		headers: modelResponseHeaders(backendRes.headers, { 'Content-Type': 'application/json' })
 	});
 };

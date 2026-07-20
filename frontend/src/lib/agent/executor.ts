@@ -215,7 +215,8 @@ export async function executeToolCall(
 						})
 					},
 					'gemini-3-flash-preview',
-					fetchWithRetry
+					fetchWithRetry,
+					{ operation: 'web-fetch' }
 				);
 
 				if (!res.ok) {
@@ -351,7 +352,8 @@ export async function executeToolCall(
 						})
 					},
 					'gemini-3-flash-preview',
-					fetchWithRetry
+					fetchWithRetry,
+					{ operation: 'web-search' }
 				);
 
 				if (!res.ok) {

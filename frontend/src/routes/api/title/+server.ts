@@ -1,4 +1,5 @@
 import type { RequestHandler } from './$types';
+import { modelResponseHeaders } from '$lib/model-response-headers';
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const BACKEND = (platform?.env as any)?.BACKEND_URL || 'http://localhost:3000';
@@ -46,7 +47,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 				const error = await res.text();
 				return new Response(error, {
 					status: res.status,
-					headers: { 'Content-Type': 'text/plain' }
+					headers: modelResponseHeaders(res.headers, { 'Content-Type': 'text/plain' })
 				});
 			}
 			return new Response(JSON.stringify({ title: '' }), {
@@ -62,7 +63,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		).trim().slice(0, 60);
 
 		return new Response(JSON.stringify({ title }), {
-			headers: { 'Content-Type': 'application/json' }
+			headers: modelResponseHeaders(res.headers, { 'Content-Type': 'application/json' })
 		});
 	} catch {
 		return new Response(JSON.stringify({ title: '' }), {

@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { env } from '$env/dynamic/public';
+	import ByokToastHost from '$lib/components/ByokToastHost.svelte';
 
 	let { children } = $props();
 
@@ -26,3 +27,4 @@
 <div class="min-h-screen bg-background text-foreground font-sans text-sm leading-relaxed">
 	{@render children()}
 </div>
+<ByokToastHost />

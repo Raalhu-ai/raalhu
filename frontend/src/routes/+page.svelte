@@ -15,7 +15,7 @@
 	import SettingsPage from '$lib/components/SettingsPage.svelte';
 	import { getInspirationCard } from '$lib/inspiration-cards';
 	import { applyTheme, applyFontSize, loadSettings, type Settings } from '$lib/settings';
-	import { switchToProxy, type ModelModule } from '$lib/gemini-api';
+	import type { ModelModule } from '$lib/gemini-api';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import type { ChatSession, Project } from '$lib/db';
 	import {
@@ -123,11 +123,6 @@
 		window.addEventListener('mogger-settings-changed', onSettingsChanged);
 		return () => window.removeEventListener('mogger-settings-changed', onSettingsChanged);
 	});
-
-	function switchToCodeAssistProxy() {
-		switchToProxy();
-		modelProvider = 'proxy';
-	}
 
 	function getSessionTitle(id: string): string {
 		return sessions.find((s) => s.id === id)?.title ?? '';
@@ -732,7 +727,6 @@
 						}}
 						incognito={chat.incognito}
 						onExitIncognito={exitIncognito}
-						onSwitchToProxy={switchToCodeAssistProxy}
 					/>
 				</div>
 			{/each}

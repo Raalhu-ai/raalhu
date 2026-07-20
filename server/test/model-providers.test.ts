@@ -2,8 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { asSchema } from 'ai';
 import { AGENT_TOOLS } from '../../frontend/src/lib/agent/tools';
 import {
+	BYOK_ERROR_ORIGIN_HEADER,
+	RESOLVED_AI_PROVIDER_HEADER,
+	RESOLVED_MODEL_MODULE_HEADER,
 	geminiFunctionParametersToAiSdkInputSchema,
-	normalizeGeminiFunctionSchemaForAiSdk
+	getModelRouteResponseHeaders,
+	normalizeGeminiFunctionSchemaForAiSdk,
+	streamModel
 } from '../src/model-providers';
 
 const GEMINI_SCHEMA_TYPES = new Set(['OBJECT', 'STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'ARRAY', 'NULL']);
@@ -33,6 +38,41 @@ function collectGeminiStyleTypes(schema: unknown): string[] {
 }
 
 const agentFunctionDeclarations = AGENT_TOOLS.flatMap((tool) => tool.functionDeclarations || []);
+
+describe('model route response metadata', () => {
+	test('identifies BYOK provider failures without storing any health state', () => {
+		const headers = getModelRouteResponseHeaders(
+			{ module: 'ai-sdk', provider: 'google', apiKey: 'not-exposed' },
+			true
+		);
+
+		expect(headers[RESOLVED_MODEL_MODULE_HEADER]).toBe('ai-sdk');
+		expect(headers[RESOLVED_AI_PROVIDER_HEADER]).toBe('google');
+		expect(headers[BYOK_ERROR_ORIGIN_HEADER]).toBe('provider');
+		expect(JSON.stringify(headers)).not.toContain('not-exposed');
+	});
+
+	test('marks proxy responses without a provider failure origin', () => {
+		const headers = getModelRouteResponseHeaders({ module: 'proxy' });
+
+		expect(headers[RESOLVED_MODEL_MODULE_HEADER]).toBe('proxy');
+		expect(headers[RESOLVED_AI_PROVIDER_HEADER]).toBeUndefined();
+		expect(headers[BYOK_ERROR_ORIGIN_HEADER]).toBeUndefined();
+	});
+
+	test('returns provider-origin metadata for a synchronous BYOK stream failure', async () => {
+		const response = await streamModel(
+			{ module: 'ai-sdk', provider: 'openai', apiKey: 'test-key' },
+			{ contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
+			{} as never
+		);
+
+		expect(response.status).toBe(502);
+		expect(response.headers.get(RESOLVED_MODEL_MODULE_HEADER)).toBe('ai-sdk');
+		expect(response.headers.get(RESOLVED_AI_PROVIDER_HEADER)).toBe('openai');
+		expect(response.headers.get(BYOK_ERROR_ORIGIN_HEADER)).toBe('provider');
+	});
+});
 
 describe('normalizeGeminiFunctionSchemaForAiSdk', () => {
 	test('normalizes every current agent tool declaration recursively', () => {
