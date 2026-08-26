@@ -8,9 +8,7 @@ export const ANTIGRAVITY_MIN_CLIENT_VERSION = '2.9.1';
 export const ANTIGRAVITY_SCOPES = [
 	'https://www.googleapis.com/auth/cloud-platform',
 	'https://www.googleapis.com/auth/userinfo.email',
-	'https://www.googleapis.com/auth/userinfo.profile',
-	'https://www.googleapis.com/auth/cclog',
-	'https://www.googleapis.com/auth/experimentsandconfigs'
+	'https://www.googleapis.com/auth/userinfo.profile'
 ] as const;
 
 const NODE_API_USER_AGENT = 'google-api-nodejs-client/10.3.0';

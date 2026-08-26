@@ -110,10 +110,12 @@ describe('Antigravity identity and sessions', () => {
 		expect(requestUserAgent('2.1.0')).toBe('antigravity/hub/2.9.1 darwin/arm64');
 	});
 
-	test('uses the required developer-owned OAuth scopes', () => {
-		expect(ANTIGRAVITY_SCOPES).toContain('https://www.googleapis.com/auth/cclog');
-		expect(ANTIGRAVITY_SCOPES).toContain('https://www.googleapis.com/auth/experimentsandconfigs');
+	test('uses only scopes available to a developer-owned OAuth client', () => {
 		expect(ANTIGRAVITY_SCOPES).toContain('https://www.googleapis.com/auth/cloud-platform');
+		expect(ANTIGRAVITY_SCOPES).toContain('https://www.googleapis.com/auth/userinfo.email');
+		expect(ANTIGRAVITY_SCOPES).toContain('https://www.googleapis.com/auth/userinfo.profile');
+		expect(ANTIGRAVITY_SCOPES).not.toContain('https://www.googleapis.com/auth/cclog');
+		expect(ANTIGRAVITY_SCOPES).not.toContain('https://www.googleapis.com/auth/experimentsandconfigs');
 	});
 
 	test('accepts only versioned Antigravity sessions', () => {
