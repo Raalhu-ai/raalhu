@@ -124,6 +124,9 @@ export function extractProjectFromPayload(value: unknown): string | null {
 	for (const key of [
 		'cloudaicompanionProject',
 		'cloudaicompanion_project',
+		'cloudcompanionProject',
+		'cloudCompanionProject',
+		'cloud_companion_project',
 		'projectId',
 		'project_id',
 		'project'

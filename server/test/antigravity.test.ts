@@ -137,6 +137,13 @@ describe('Antigravity setup and quota', () => {
 	test('extracts known project response variants without treating operation names as projects', () => {
 		expect(extractProjectFromPayload({ projectId: 'project-id' })).toBe('project-id');
 		expect(extractProjectFromPayload({ response: { project: { id: 'nested-project' } } })).toBe('nested-project');
+		expect(extractProjectFromPayload({
+			done: true,
+			response: {
+				'@type': 'type.googleapis.com/google.internal.OnboardUserResponse',
+				cloudcompanionProject: { id: 'protobuf-project' }
+			}
+		})).toBe('protobuf-project');
 		expect(extractProjectFromPayload({ name: 'operations/onboarding-1', done: false })).toBeNull();
 	});
 
