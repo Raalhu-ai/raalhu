@@ -7,12 +7,13 @@ import {
 	configureAgent,
 } from '@raalhu/shared/src/agent';
 import type { SandboxLike, ToolResult, PlatformAdapter } from '@raalhu/shared/src/agent';
-import { API_BASE, getAuthHeaders } from '../api';
+import { API_BASE, clearSession, getAuthHeaders } from '../api';
 
 // Configure the shared retry module with mobile's auth
 configureAgent({
 	apiBase: API_BASE,
 	getAuthHeaders,
+	onReauthRequired: clearSession,
 });
 
 const mobileAdapter: PlatformAdapter = {

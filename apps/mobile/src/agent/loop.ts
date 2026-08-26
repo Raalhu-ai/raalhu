@@ -9,6 +9,7 @@ const MAX_TURNS = 15;
 
 interface AgentLoopOptions {
 	model: string;
+	conversationId: string;
 	contents: GeminiContent[];
 	systemInstruction: { role: string; parts: [{ text: string }] };
 	sandbox?: PyodideSandbox | null;
@@ -182,7 +183,7 @@ async function fetchSSEWithRetry(
  * a text response is produced or the turn limit is reached.
  */
 export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<AgentEvent> {
-	const { model, contents, systemInstruction, sandbox } = options;
+	const { model, conversationId, contents, systemInstruction, sandbox } = options;
 	const history = contents;
 
 	console.log(`[AgentLoop] Starting loop. model=${model} history=${history.length} messages`);
@@ -192,6 +193,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
 		const reqBody = {
 			model,
+			conversationId,
 			contents: history,
 			systemInstruction,
 			tools: AGENT_TOOLS,

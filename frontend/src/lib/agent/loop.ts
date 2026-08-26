@@ -9,6 +9,7 @@ const MAX_TURNS = 15;
 
 interface AgentLoopOptions {
 	model: string;
+	conversationId: string;
 	contents: GeminiContent[];
 	systemInstruction: { role: string; parts: [{ text: string }] };
 	sandbox: PyodideSandbox;
@@ -109,7 +110,7 @@ async function* streamGeminiTurn(
  * Yields AgentEvent objects for the UI to consume.
  */
 export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<AgentEvent> {
-	const { model, contents, systemInstruction, sandbox, memories } = options;
+	const { model, conversationId, contents, systemInstruction, sandbox, memories } = options;
 	// Mutate the passed contents array directly so the caller gets the full history
 	// (including tool call/response rounds and thoughtSignatures)
 	const history = contents;
@@ -122,6 +123,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
 		const reqBody = {
 			model,
+			conversationId,
 			contents: history,
 			systemInstruction,
 			userPromptId: crypto.randomUUID(),

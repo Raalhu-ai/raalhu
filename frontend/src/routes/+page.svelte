@@ -179,16 +179,28 @@
 			appState = 'login';
 			return;
 		}
-			if (!user.project) {
-				try {
-					const result = await setupCodeAssist();
-					user = { ...user, project: result.project, tier: result.tier };
+		if (!user.project && modelProvider === 'ai-sdk') {
+			// BYOK remains immediately usable. Provision the proxy in the background so
+			// the existing BYOK-failure fallback can use Antigravity when available.
+			setupCodeAssist()
+				.then((result) => {
+					if (user) user = { ...user, project: result.project, tier: result.tier };
+				})
+				.catch((error) => console.warn('[Antigravity] Background setup unavailable:', error));
+		}
+		if (!user.project && modelProvider !== 'ai-sdk') {
+			try {
+				const result = await setupCodeAssist();
+				user = { ...user, project: result.project, tier: result.tier };
 			} catch (err: any) {
 				appState = 'setup';
 				const msg = err.message || 'Setup failed';
 				if (msg.startsWith('TOS_REQUIRED:')) {
 					setupTosUrl = msg.slice('TOS_REQUIRED:'.length);
 					setupError = 'ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.';
+				} else if (msg.startsWith('VERIFICATION_REQUIRED:')) {
+					setupTosUrl = msg.slice('VERIFICATION_REQUIRED:'.length);
+					setupError = 'Google requires account verification before Antigravity can be used.';
 				} else {
 					setupError = msg;
 				}
@@ -203,7 +215,7 @@
 			const loaded = await loadSession(resumeId);
 			if (loaded) {
 				history.replaceState(history.state, '', `/chat/${resumeId}`);
-				if (user.project) loadQuota();
+				if (user.project && modelProvider !== 'ai-sdk') loadQuota();
 				return;
 			}
 		}
@@ -213,12 +225,12 @@
 		if (resumeProjectId) {
 			sessionStorage.removeItem('mogger_resume_project');
 			await openProject(resumeProjectId);
-			if (user.project) loadQuota();
+			if (user.project && modelProvider !== 'ai-sdk') loadQuota();
 			return;
 		}
 
 		appState = 'dashboard';
-		if (user.project) loadQuota();
+		if (user.project && modelProvider !== 'ai-sdk') loadQuota();
 	});
 
 	// --- Setup ---
@@ -236,6 +248,9 @@
 			if (msg.startsWith('TOS_REQUIRED:')) {
 				setupTosUrl = msg.slice('TOS_REQUIRED:'.length);
 				setupError = 'ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.';
+			} else if (msg.startsWith('VERIFICATION_REQUIRED:')) {
+				setupTosUrl = msg.slice('VERIFICATION_REQUIRED:'.length);
+				setupError = 'Google requires account verification before Antigravity can be used.';
 			} else {
 				setupError = msg;
 			}

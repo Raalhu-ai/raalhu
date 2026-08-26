@@ -19,6 +19,8 @@ export interface ApiUser {
 	picture: string;
 	project: string | null;
 	tier: string | null;
+	authProvider: 'antigravity';
+	accountType: 'unknown' | 'consumer' | 'enterprise' | 'paygo';
 }
 
 export interface ApiQuotaModel {
@@ -32,13 +34,36 @@ export interface ApiSetupResult {
 	project: string;
 	tier: string;
 	status: string;
+	provider: 'antigravity';
+	accountType: 'consumer';
+}
+
+export interface ApiErrorPayload {
+	error: string;
+	code?: string;
+	details?: string;
+	actionUrl?: string;
+	retryAfterMs?: number;
+}
+
+export class ApiClientError extends Error {
+	constructor(
+		message: string,
+		public status: number,
+		public code?: string,
+		public actionUrl?: string,
+		public retryAfterMs?: number
+	) {
+		super(message);
+		this.name = 'ApiClientError';
+	}
 }
 
 export function createApiClient(baseUrl: string, storage: SessionStorage) {
 	function getAuthHeaders(): Record<string, string> | Promise<Record<string, string>> {
 		const session = storage.get();
 		if (session instanceof Promise) {
-			return session.then((s) => (s ? { 'X-Session': s } : {}));
+			return session.then((s): Record<string, string> => (s ? { 'X-Session': s } : {}));
 		}
 		return session ? { 'X-Session': session } : {};
 	}
@@ -46,6 +71,17 @@ export function createApiClient(baseUrl: string, storage: SessionStorage) {
 	async function resolveHeaders(): Promise<Record<string, string>> {
 		const h = getAuthHeaders();
 		return h instanceof Promise ? h : h;
+	}
+
+	async function readApiError(res: Response): Promise<ApiClientError> {
+		const data = (await res.json().catch(() => ({ error: `Request failed with ${res.status}` }))) as ApiErrorPayload;
+		return new ApiClientError(
+			data.error + (data.details ? `: ${data.details}` : ''),
+			res.status,
+			data.code,
+			data.actionUrl,
+			data.retryAfterMs
+		);
 	}
 
 	async function startLogin(): Promise<{ authUrl: string; state: string }> {
@@ -76,7 +112,11 @@ export function createApiClient(baseUrl: string, storage: SessionStorage) {
 			const res = await fetch(`${baseUrl}/auth/me`, {
 				headers: await resolveHeaders(),
 			});
-			if (!res.ok) return null;
+			if (!res.ok) {
+				const error = await readApiError(res);
+				if (error.code === 'REAUTH_REQUIRED') await storage.clear();
+				return null;
+			}
 			return await res.json();
 		} catch {
 			return null;
@@ -90,11 +130,17 @@ export function createApiClient(baseUrl: string, storage: SessionStorage) {
 		});
 		const data = await res.json();
 		if (!res.ok) {
-			const err = data as { error: string; details?: string; tosUrl?: string };
-			if (res.status === 428 && err.tosUrl) {
-				throw new Error(`TOS_REQUIRED:${err.tosUrl}`);
-			}
-			throw new Error(err.error + (err.details ? ': ' + err.details : ''));
+			const err = data as ApiErrorPayload;
+			if (err.code === 'REAUTH_REQUIRED') await storage.clear();
+			if (err.code === 'TOS_REQUIRED' && err.actionUrl) throw new Error(`TOS_REQUIRED:${err.actionUrl}`);
+			if (err.code === 'ACCOUNT_VERIFICATION_REQUIRED' && err.actionUrl) throw new Error(`VERIFICATION_REQUIRED:${err.actionUrl}`);
+			throw new ApiClientError(
+				err.error + (err.details ? ': ' + err.details : ''),
+				res.status,
+				err.code,
+				err.actionUrl,
+				err.retryAfterMs
+			);
 		}
 		return data;
 	}
@@ -104,7 +150,17 @@ export function createApiClient(baseUrl: string, storage: SessionStorage) {
 			headers: await resolveHeaders(),
 		});
 		const data = await res.json();
-		if (!res.ok) throw new Error(data.error || 'Failed to fetch quota');
+		if (!res.ok) {
+			const error = new ApiClientError(
+				data.error || 'Failed to fetch quota',
+				res.status,
+				data.code,
+				data.actionUrl,
+				data.retryAfterMs
+			);
+			if (error.code === 'REAUTH_REQUIRED') await storage.clear();
+			throw error;
+		}
 		const buckets: ApiQuotaModel[] =
 			data.buckets || data.userQuota?.perModelQuotas || data.perModelQuotas || [];
 		return buckets.filter((b) => !b.modelId?.endsWith('_vertex'));

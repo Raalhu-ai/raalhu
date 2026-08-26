@@ -4,6 +4,8 @@ export interface User {
 	picture: string;
 	project: string | null;
 	tier: string | null;
+	authProvider: 'antigravity';
+	accountType: 'unknown' | 'consumer' | 'enterprise' | 'paygo';
 }
 
 export interface QuotaModel {
@@ -17,6 +19,21 @@ export interface SetupResult {
 	project: string;
 	tier: string;
 	status: string;
+	provider: 'antigravity';
+	accountType: 'consumer';
+}
+
+export class ApiError extends Error {
+	constructor(
+		message: string,
+		public status: number,
+		public code?: string,
+		public actionUrl?: string,
+		public retryAfterMs?: number
+	) {
+		super(message);
+		this.name = 'ApiError';
+	}
 }
 
 export async function fetchMe(): Promise<User | null> {
@@ -51,11 +68,10 @@ export async function setupCodeAssist(): Promise<SetupResult> {
 	const res = await fetch('/api/setup', { method: 'POST' });
 	const data = await res.json();
 	if (!res.ok) {
-		const err = data as { error: string; details?: string; tosUrl?: string };
-		if (res.status === 428 && err.tosUrl) {
-			throw new Error(`TOS_REQUIRED:${err.tosUrl}`);
-		}
-		throw new Error(err.error + (err.details ? ': ' + err.details : ''));
+		const err = data as { error: string; code?: string; details?: string; actionUrl?: string; retryAfterMs?: number };
+		if (err.code === 'TOS_REQUIRED' && err.actionUrl) throw new Error(`TOS_REQUIRED:${err.actionUrl}`);
+		if (err.code === 'ACCOUNT_VERIFICATION_REQUIRED' && err.actionUrl) throw new Error(`VERIFICATION_REQUIRED:${err.actionUrl}`);
+		throw new ApiError(err.error + (err.details ? ': ' + err.details : ''), res.status, err.code, err.actionUrl, err.retryAfterMs);
 	}
 	return data;
 }
@@ -63,8 +79,7 @@ export async function setupCodeAssist(): Promise<SetupResult> {
 export async function fetchQuota(): Promise<QuotaModel[]> {
 	const res = await fetch('/api/quota');
 	const data = await res.json();
-	console.log('[Quota] Raw API response:', data);
-	if (!res.ok) throw new Error(data.error || 'Failed to fetch quota');
+	if (!res.ok) throw new ApiError(data.error || 'Failed to fetch quota', res.status, data.code, data.actionUrl, data.retryAfterMs);
 	const buckets: QuotaModel[] = data.buckets || data.userQuota?.perModelQuotas || data.perModelQuotas || [];
 	// Filter out _vertex duplicates
 	return buckets.filter((b) => !b.modelId?.endsWith('_vertex'));

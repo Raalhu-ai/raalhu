@@ -135,6 +135,15 @@ const CLOUDCODE_DOMAINS = [
  * Logic matches google-gemini/gemini-cli classifyGoogleError().
  */
 export function classifyError(status: number, body: string): TerminalQuotaError | RetryableQuotaError | null {
+	try {
+		const apiError = JSON.parse(body);
+		if (status === 429 && apiError?.code === 'RATE_LIMITED') {
+			const delaySeconds = typeof apiError.retryAfterMs === 'number' ? apiError.retryAfterMs / 1000 : undefined;
+			return new RetryableQuotaError(apiError.error || 'Antigravity is rate limited.', delaySeconds);
+		}
+	} catch {
+		// Continue with Google RPC error parsing.
+	}
 	const googleApiError = parseGoogleApiError(body);
 
 	// 503 is always retryable

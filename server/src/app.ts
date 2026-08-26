@@ -6,10 +6,20 @@ import {
 	loadSession,
 	saveSession,
 	deleteSession,
+	isCurrentSession,
 	setSessionCookie,
 	clearSessionCookie
 } from './session';
 import { generateModel, streamModel, type AiProvider, type ModelRoute } from './model-providers';
+import {
+	ANTIGRAVITY_PROTOCOL_VERSION,
+	ANTIGRAVITY_SCOPES,
+	AntigravityError,
+	apiErrorBody,
+	fetchAntigravityQuota,
+	resolveClientVersion,
+	setupAntigravity
+} from './antigravity';
 
 // --- Types ---
 
@@ -17,8 +27,10 @@ type Env = {
 	Bindings: {
 		AUTH_SESSIONS: KVNamespace;
 		SESSIONS: KVNamespace;
-		OAUTH_CLIENT_ID: string;
-		OAUTH_CLIENT_SECRET: string;
+		ANTIGRAVITY_OAUTH_CLIENT_ID: string;
+		ANTIGRAVITY_OAUTH_CLIENT_SECRET: string;
+		ANTIGRAVITY_REDIRECT_URI: string;
+		ANTIGRAVITY_CLIENT_VERSION: string;
 	};
 	Variables: {
 		session: SessionData;
@@ -26,16 +38,7 @@ type Env = {
 	};
 };
 
-const CODE_ASSIST_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
-const RESOURCE_MANAGER_BASE = 'https://cloudresourcemanager.googleapis.com/v3';
-
-const REDIRECT_URI = 'https://codeassist.google.com/authcode';
-
-const SCOPES = [
-	'https://www.googleapis.com/auth/cloud-platform',
-	'https://www.googleapis.com/auth/userinfo.email',
-	'https://www.googleapis.com/auth/userinfo.profile'
-].join(' ');
+const SCOPES = ANTIGRAVITY_SCOPES.join(' ');
 
 const app = new Hono<Env>();
 
@@ -77,26 +80,28 @@ async function generatePKCE(): Promise<{ verifier: string; challenge: string }> 
 /** Get valid access token, refreshing if needed. Returns null if session is dead. */
 async function getValidAccessToken(
 	sessionId: string,
-	env: Env['Bindings']
+	env: Env['Bindings'],
+	forceRefresh = false
 ): Promise<{ token: string; session: SessionData } | null> {
 	const session = await loadSession(sessionId, env.SESSIONS);
-	if (!session) return null;
+	if (!isCurrentSession(session)) return null;
 
 	// Refresh if token expires within 60 seconds
-	if (Date.now() > session.expiresAt - 60_000) {
+	if (forceRefresh || Date.now() > session.expiresAt - 60_000) {
+		const refreshStartedAt = Date.now();
 		const res = await fetch('https://oauth2.googleapis.com/token', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({
 				refresh_token: session.refreshToken,
-				client_id: env.OAUTH_CLIENT_ID,
-				client_secret: env.OAUTH_CLIENT_SECRET,
+				client_id: env.ANTIGRAVITY_OAUTH_CLIENT_ID,
+				client_secret: env.ANTIGRAVITY_OAUTH_CLIENT_SECRET,
 				grant_type: 'refresh_token'
 			})
 		});
 
 		if (!res.ok) {
-			console.error('[refresh] Token refresh failed:', res.status);
+			console.warn(JSON.stringify({ event: 'oauth_refresh', outcome: 'error', status: res.status, latencyMs: Date.now() - refreshStartedAt }));
 			return null;
 		}
 
@@ -105,6 +110,7 @@ async function getValidAccessToken(
 		session.expiresAt = Date.now() + refreshed.expires_in * 1000;
 
 		await saveSession(sessionId, session, env.SESSIONS);
+		console.log(JSON.stringify({ event: 'oauth_refresh', outcome: 'success', latencyMs: Date.now() - refreshStartedAt }));
 	}
 
 	return { token: session.accessToken, session };
@@ -119,7 +125,11 @@ async function authMiddleware(c: Context<Env>, next: Next) {
 
 	const result = await getValidAccessToken(sessionId, c.env);
 	if (!result) {
-		return c.json({ error: 'Not authenticated' }, 401);
+		c.header('Set-Cookie', clearSessionCookie());
+		return c.json(
+			{ error: 'Your session must be refreshed. Please sign in again.', code: 'REAUTH_REQUIRED' },
+			401
+		);
 	}
 
 	c.set('session', result.session);
@@ -127,44 +137,16 @@ async function authMiddleware(c: Context<Env>, next: Next) {
 	await next();
 }
 
-/** Label project as mogger (fire-and-forget). */
-async function labelProjectAsMogger(projectId: string, accessToken: string) {
-	try {
-		const headers: Record<string, string> = {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		};
-
-		const getRes = await fetch(`${RESOURCE_MANAGER_BASE}/projects/${projectId}`, { headers });
-		if (!getRes.ok) {
-			console.warn(`[labelProject] Failed to read project ${projectId}:`, getRes.status);
-			return;
-		}
-		const project: any = await getRes.json();
-		const labels = { ...(project.labels || {}), 'created-by': 'mogger' };
-
-		const patchRes = await fetch(
-			`${RESOURCE_MANAGER_BASE}/projects/${projectId}?updateMask=labels`,
-			{
-				method: 'PATCH',
-				headers,
-				body: JSON.stringify({ labels })
-			}
-		);
-		if (!patchRes.ok) {
-			console.warn(`[labelProject] Failed to label project ${projectId}:`, patchRes.status);
-		} else {
-			console.log(`[labelProject] Labeled project ${projectId} with created-by=mogger`);
-		}
-	} catch (err: any) {
-		console.warn(`[labelProject] Error:`, err.message);
+function antigravityErrorResponse(c: Context<Env>, error: unknown) {
+	if (error instanceof AntigravityError) {
+		if (error.code === 'REAUTH_REQUIRED') c.header('Set-Cookie', clearSessionCookie());
+		return c.json(apiErrorBody(error), error.status as any);
 	}
-}
-
-function extractProject(val: any): string | null {
-	if (!val) return null;
-	if (typeof val === 'string') return val;
-	return val.id || val.name || null;
+	const details = error instanceof Error ? error.message.slice(0, 500) : undefined;
+	return c.json(
+		{ error: 'Antigravity request failed.', code: 'UPSTREAM_UNAVAILABLE', ...(details ? { details } : {}) },
+		500
+	);
 }
 
 type MemoriesPayload = {
@@ -264,17 +246,20 @@ function resolveModelRoute(c: Context<Env>): ModelRoute {
 app.get('/auth/start', async (c) => {
 	const { verifier, challenge } = await generatePKCE();
 	const state = crypto.randomUUID();
+	const redirectUri = c.env.ANTIGRAVITY_REDIRECT_URI;
 
-	await c.env.AUTH_SESSIONS.put(state, JSON.stringify({ verifier }), {
+	await c.env.AUTH_SESSIONS.put(state, JSON.stringify({ verifier, redirectUri }), {
 		expirationTtl: 600 // 10 minutes
 	});
 
 	const params = new URLSearchParams({
-		client_id: c.env.OAUTH_CLIENT_ID,
-		redirect_uri: REDIRECT_URI,
+		client_id: c.env.ANTIGRAVITY_OAUTH_CLIENT_ID,
+		redirect_uri: redirectUri,
 		response_type: 'code',
 		scope: SCOPES,
 		access_type: 'offline',
+		prompt: 'consent',
+		include_granted_scopes: 'true',
 		state,
 		code_challenge: challenge,
 		code_challenge_method: 'S256'
@@ -300,7 +285,7 @@ app.post('/auth/exchange', async (c) => {
 			400
 		);
 	}
-	const { verifier } = JSON.parse(stored) as { verifier: string };
+	const { verifier, redirectUri } = JSON.parse(stored) as { verifier: string; redirectUri: string };
 	await c.env.AUTH_SESSIONS.delete(state);
 
 	// Exchange the code for tokens
@@ -309,9 +294,9 @@ app.post('/auth/exchange', async (c) => {
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body: new URLSearchParams({
 			code,
-			client_id: c.env.OAUTH_CLIENT_ID,
-			client_secret: c.env.OAUTH_CLIENT_SECRET,
-			redirect_uri: REDIRECT_URI,
+			client_id: c.env.ANTIGRAVITY_OAUTH_CLIENT_ID,
+			client_secret: c.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET,
+			redirect_uri: redirectUri,
 			grant_type: 'authorization_code',
 			code_verifier: verifier
 		})
@@ -327,6 +312,12 @@ app.post('/auth/exchange', async (c) => {
 	}
 
 	const tokens: any = await tokenRes.json();
+	if (!tokens.refresh_token) {
+		return c.json(
+			{ error: 'Google did not return an offline refresh token. Please sign in again.', code: 'REAUTH_REQUIRED' },
+			400
+		);
+	}
 
 	// Fetch user info
 	const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -337,6 +328,9 @@ app.post('/auth/exchange', async (c) => {
 	// Persist session in KV
 	const sessionId = crypto.randomUUID();
 	const sessionData: SessionData = {
+		schemaVersion: ANTIGRAVITY_PROTOCOL_VERSION,
+		authProvider: 'antigravity',
+		accountType: 'unknown',
 		accessToken: tokens.access_token,
 		refreshToken: tokens.refresh_token,
 		expiresAt: Date.now() + tokens.expires_in * 1000,
@@ -358,14 +352,22 @@ app.get('/auth/me', async (c) => {
 	if (!sessionId) return c.json({ error: 'Not authenticated' }, 401);
 
 	const session = await loadSession(sessionId, c.env.SESSIONS);
-	if (!session) return c.json({ error: 'Not authenticated' }, 401);
+	if (!isCurrentSession(session)) {
+		c.header('Set-Cookie', clearSessionCookie());
+		return c.json(
+			{ error: 'Your session must be refreshed. Please sign in again.', code: 'REAUTH_REQUIRED' },
+			401
+		);
+	}
 
 	return c.json({
 		email: session.email,
 		name: session.name,
 		picture: session.picture,
 		project: session.project,
-		tier: session.tier
+		tier: session.tier,
+		authProvider: session.authProvider,
+		accountType: session.accountType
 	});
 });
 
@@ -381,120 +383,31 @@ app.post('/auth/logout', async (c) => {
 // ==================== API ROUTES ====================
 
 app.post('/api/setup', authMiddleware, async (c) => {
-	const session = c.get('session');
+	let session = c.get('session');
 	const sessionId = c.get('sessionId');
-	const { accessToken } = session;
-	const headers: Record<string, string> = {
-		Authorization: `Bearer ${accessToken}`,
-		'Content-Type': 'application/json',
-		'x-goog-api-client': 'gl-node mogger/1.0.0'
-	};
+	const startedAt = Date.now();
 
 	try {
-		// Step 1: loadCodeAssist
-		const loadRes = await fetch(`${CODE_ASSIST_BASE}:loadCodeAssist`, {
-			method: 'POST',
-			headers,
-			body: JSON.stringify({
-				metadata: { ideType: 'GEMINI_CLI' }
-			})
-		});
-
-		if (!loadRes.ok) {
-			const errBody = await loadRes.text();
-			if (errBody.includes('TERMS_OF_SERVICE') || errBody.includes('tos')) {
-				return c.json(
-					{
-						error: 'Terms of Service acceptance required',
-						details: errBody,
-						tosUrl: 'https://console.cloud.google.com/terms'
-					},
-					428
-				);
-			}
-			return c.json({ error: 'loadCodeAssist failed', details: errBody }, loadRes.status as any);
+		const version = resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION);
+		let result;
+		try {
+			result = await setupAntigravity(session, version);
+		} catch (error) {
+			if (!(error instanceof AntigravityError) || error.code !== 'REAUTH_REQUIRED') throw error;
+			const refreshed = await getValidAccessToken(sessionId, c.env, true);
+			if (!refreshed) throw error;
+			session = refreshed.session;
+			result = await setupAntigravity(session, version);
 		}
-
-		const loadData: any = await loadRes.json();
-		console.log('[loadCodeAssist] response:', JSON.stringify(loadData, null, 2));
-
-		// Check if user already has a project
-		const existingProject = extractProject(loadData.cloudaicompanionProject);
-		if (existingProject) {
-			session.project = existingProject;
-			session.tier = loadData.currentTier?.id || 'free';
-			await saveSession(sessionId, session, c.env.SESSIONS);
-			return c.json({
-				project: existingProject,
-				tier: session.tier,
-				status: 'ready'
-			});
-		}
-
-		// Step 2: Pick tier
-		const allowedTiers = loadData.allowedTiers || [];
-		const tier = allowedTiers.find((t: any) => t.isDefault) || allowedTiers[0] || null;
-		if (!tier) {
-			return c.json({ error: 'No allowed tiers returned', details: loadData }, 400);
-		}
-
-		// Step 3: onboardUser
-		const onboardRes = await fetch(`${CODE_ASSIST_BASE}:onboardUser`, {
-			method: 'POST',
-			headers,
-			body: JSON.stringify({
-				tierId: tier.id,
-				metadata: { ideType: 'GEMINI_CLI' }
-			})
-		});
-
-		if (!onboardRes.ok) {
-			const errBody = await onboardRes.text();
-			return c.json({ error: 'onboardUser failed', details: errBody }, onboardRes.status as any);
-		}
-
-		const onboardData: any = await onboardRes.json();
-		console.log('[onboardUser] response:', JSON.stringify(onboardData, null, 2));
-
-		// Poll for operation completion
-		if (onboardData.name && !onboardData.done) {
-			let opResult = onboardData;
-			for (let i = 0; i < 30; i++) {
-				await new Promise((r) => setTimeout(r, 2000));
-				const pollRes = await fetch(
-					`https://cloudcode-pa.googleapis.com/${opResult.name}`,
-					{ headers }
-				);
-				if (!pollRes.ok) continue;
-				opResult = await pollRes.json();
-				console.log(`[onboardUser] poll #${i + 1}:`, JSON.stringify(opResult, null, 2));
-				if (opResult.done) break;
-			}
-
-			if (opResult.done && opResult.response) {
-				const project = extractProject(opResult.response.cloudaicompanionProject);
-				session.project = project;
-				session.tier = opResult.response.tierId || 'free';
-				await saveSession(sessionId, session, c.env.SESSIONS);
-				labelProjectAsMogger(project!, accessToken);
-				return c.json({ project, tier: session.tier, status: 'ready' });
-			} else {
-				return c.json({ error: 'Onboarding timed out', details: opResult }, 504);
-			}
-		}
-
-		// Operation completed immediately
-		const project = extractProject(
-			onboardData.response?.cloudaicompanionProject || onboardData.cloudaicompanionProject
-		);
-		session.project = project;
-		session.tier = onboardData.response?.tierId || onboardData.tierId || 'free';
 		await saveSession(sessionId, session, c.env.SESSIONS);
-		labelProjectAsMogger(project!, accessToken);
-		return c.json({ project, tier: session.tier, status: 'ready' });
-	} catch (err: any) {
-		console.error('Setup error:', err);
-		return c.json({ error: 'Setup failed', details: err.message }, 500);
+		console.log(JSON.stringify({ event: 'antigravity_setup', outcome: 'ready', accountType: session.accountType, latencyMs: Date.now() - startedAt }));
+		return c.json(result);
+	} catch (error) {
+		if (session.accountType === 'enterprise' || session.accountType === 'paygo') {
+			await saveSession(sessionId, session, c.env.SESSIONS);
+		}
+		console.warn(JSON.stringify({ event: 'antigravity_setup', outcome: 'error', code: error instanceof AntigravityError ? error.code : 'UNKNOWN', accountType: session.accountType, latencyMs: Date.now() - startedAt }));
+		return antigravityErrorResponse(c, error);
 	}
 });
 
@@ -507,13 +420,19 @@ app.post('/api/generate', authMiddleware, async (c) => {
 	const body = withMemorySystemInstruction(rawBody as any);
 	const { model, tools } = body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[generate] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} module=${route.module}${route.provider ? ` provider=${route.provider}` : ''}`);
+	const startedAt = Date.now();
+	const routing = route.module === 'ai-sdk' ? 'byok' : 'antigravity';
 
 	try {
-		return await generateModel(route, body, session);
+		const response = await generateModel(route, body, session, {
+			version: resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION),
+			refreshSession: async () => (await getValidAccessToken(c.get('sessionId'), c.env, true))?.session || null
+		});
+		console.log(JSON.stringify({ event: 'model_request', mode: 'generate', routing, provider: route.provider, model: resolvedModel, tools: !!tools, memories: hasMemories, outcome: 'ok', status: response.status, latencyMs: Date.now() - startedAt }));
+		return response;
 	} catch (err: any) {
-		console.error('Generate error:', err);
-		return c.json({ error: 'Generate failed', details: err.message }, 500);
+		console.warn(JSON.stringify({ event: 'model_request', mode: 'generate', routing, provider: route.provider, model: resolvedModel, outcome: 'error', code: err instanceof AntigravityError ? err.code : 'UNKNOWN', status: err instanceof AntigravityError ? err.status : 500, latencyMs: Date.now() - startedAt }));
+		return antigravityErrorResponse(c, err);
 	}
 });
 
@@ -526,48 +445,40 @@ app.post('/api/stream', authMiddleware, async (c) => {
 	const body = withMemorySystemInstruction(rawBody as any);
 	const { model, tools } = body;
 	const resolvedModel = model || 'gemini-3-flash-preview';
-	console.log(`[stream] model=${resolvedModel} tools=${tools ? 'yes' : 'no'} memories=${hasMemories ? 'yes' : 'no'} module=${route.module}${route.provider ? ` provider=${route.provider}` : ''}`);
+	const startedAt = Date.now();
+	const routing = route.module === 'ai-sdk' ? 'byok' : 'antigravity';
 
 	try {
-		return await streamModel(route, body, session);
+		const response = await streamModel(route, body, session, {
+			version: resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION),
+			refreshSession: async () => (await getValidAccessToken(c.get('sessionId'), c.env, true))?.session || null
+		});
+		console.log(JSON.stringify({ event: 'model_request', mode: 'stream', routing, provider: route.provider, model: resolvedModel, tools: !!tools, memories: hasMemories, outcome: 'ok', status: response.status, latencyMs: Date.now() - startedAt }));
+		return response;
 	} catch (err: any) {
-		console.error('Stream error:', err);
-		return c.json({ error: 'Stream failed', details: err.message }, 500);
+		console.warn(JSON.stringify({ event: 'model_request', mode: 'stream', routing, provider: route.provider, model: resolvedModel, outcome: 'error', code: err instanceof AntigravityError ? err.code : 'UNKNOWN', status: err instanceof AntigravityError ? err.status : 500, latencyMs: Date.now() - startedAt }));
+		return antigravityErrorResponse(c, err);
 	}
 });
 
 app.get('/api/quota', authMiddleware, async (c) => {
-	const session = c.get('session');
-	const { accessToken, project } = session;
-	console.log('[Quota] Request received — project:', project);
+	let session = c.get('session');
 
 	try {
-		const quotaRes = await fetch(`${CODE_ASSIST_BASE}:retrieveUserQuota`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ project })
-		});
-
-		console.log('[Quota] API response status:', quotaRes.status);
-
-		if (!quotaRes.ok) {
-			const errBody = await quotaRes.text();
-			console.error('[Quota] API error body:', errBody);
-			return c.json(
-				{ error: 'retrieveUserQuota failed', details: errBody },
-				quotaRes.status as any
-			);
+		const version = resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION);
+		let buckets;
+		try {
+			buckets = await fetchAntigravityQuota(session, version);
+		} catch (error) {
+			if (!(error instanceof AntigravityError) || error.code !== 'REAUTH_REQUIRED') throw error;
+			const refreshed = await getValidAccessToken(c.get('sessionId'), c.env, true);
+			if (!refreshed) throw error;
+			session = refreshed.session;
+			buckets = await fetchAntigravityQuota(session, version);
 		}
-
-		const data = await quotaRes.json();
-		console.log('[Quota] API response data:', JSON.stringify(data, null, 2));
-		return c.json(data);
-	} catch (err: any) {
-		console.error('Quota error:', err);
-		return c.json({ error: 'Quota failed', details: err.message }, 500);
+		return c.json({ buckets });
+	} catch (error) {
+		return antigravityErrorResponse(c, error);
 	}
 });
 

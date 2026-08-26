@@ -110,6 +110,9 @@ export default function HomeScreen() {
           if (msg.startsWith("TOS_REQUIRED:")) {
             setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
             setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
+          } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+            setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
+            setSetupError("Google requires account verification before Antigravity can be used.");
           } else {
             setSetupError(msg);
           }
@@ -143,6 +146,9 @@ export default function HomeScreen() {
       if (msg.startsWith("TOS_REQUIRED:")) {
         setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
         setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
+      } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+        setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
+        setSetupError("Google requires account verification before Antigravity can be used.");
       } else {
         setSetupError(msg);
       }

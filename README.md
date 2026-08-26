@@ -94,8 +94,10 @@ cp apps/mobile/.env.example apps/mobile/.env  # mobile (API base URL)
 
 | Variable | Location | Description |
 | --- | --- | --- |
-| `OAUTH_CLIENT_ID` | `server/.env` | Google OAuth client ID |
-| `OAUTH_CLIENT_SECRET` | `server/.env` | Google OAuth client secret |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | `server/.env` | Developer-owned Google OAuth client ID for Antigravity |
+| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | `server/.env` | Developer-owned Google OAuth client secret for Antigravity |
+| `ANTIGRAVITY_REDIRECT_URI` | `server/.env`, Worker vars | OAuth redirect URI registered on the developer-owned client |
+| `ANTIGRAVITY_CLIENT_VERSION` | `server/.env`, Worker vars | Antigravity client version (minimum `2.9.1`) |
 | `KV_AUTH_SESSIONS_ID` | `server/.env` | Cloudflare KV namespace ID for auth sessions |
 | `KV_SESSIONS_ID` | `server/.env` | Cloudflare KV namespace ID for sessions |
 | `BACKEND_URL` | `frontend/.env` | Backend URL (defaults to `http://localhost:3000`) |
@@ -103,7 +105,7 @@ cp apps/mobile/.env.example apps/mobile/.env  # mobile (API base URL)
 | `EXPO_PUBLIC_API_BASE` | `apps/mobile/.env` | API base URL for mobile (defaults to `http://localhost:3000`) |
 | `EAS_PROJECT_ID` | Root `.env` | Expo EAS project ID (from `eas init`, mobile builds only) |
 
-For production Cloudflare Workers, set OAuth secrets via `wrangler secret put`.
+For production Cloudflare Workers, set the two Antigravity OAuth secrets via `wrangler secret put`. Use credentials from a developer-owned OAuth client; do not copy credentials from Antigravity or another proxy.
 For production Cloudflare Pages, set `PUBLIC_GA_ID` in the Pages project environment variables instead of committing a real measurement ID to `wrangler.toml`.
 
 ## Contributing

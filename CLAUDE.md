@@ -157,17 +157,19 @@ Storage is platform-specific:
 ### Request Flow
 
 1. User authenticates via Google OAuth → session stored (cookie on web, secure-store on mobile, localStorage on desktop)
-2. App calls `POST /api/setup` to provision a Code Assist project
+2. App calls `POST /api/setup` to discover or provision an Antigravity companion project
 3. User sends a message → agent chat session
 4. Chat messages → `POST /api/stream` (server) → Gemini SSE
 5. Agent loop handles multi-turn tool calling (up to 15 turns)
 
-### Code Assist API Gotchas
+### Antigravity API Gotchas
 
 - Field name is `cloudaicompanionProject` (all lowercase), NOT `cloudAiCompanionProject`
 - `loadCodeAssist` returns project as a **string**; `onboardUser` returns it as an **object** `{ id, name, projectNumber }`
-- `loadCodeAssist` body: `{ metadata: { ideType: "GEMINI_CLI" } }` — no `clientType` field
-- `onboardUser` requires `tierId` from `loadCodeAssist().allowedTiers[n].id` (`"free-tier"` or `"standard-tier"`)
+- `loadCodeAssist` uses the production control-plane host with `{ metadata: { ideType: "ANTIGRAVITY" } }`
+- Consumer onboarding, quota discovery, and generation use `daily-cloudcode-pa.googleapis.com`; generation must never fall back to production, staging, or sandbox hosts
+- Sessions require `schemaVersion: 2` and `authProvider: "antigravity"`; older sessions must reauthenticate
+- Explicit enterprise and PayGo accounts are unsupported by the proxy but remain usable with BYOK; unknown entitlement metadata is treated as consumer
 - HTTP 428 from the API means Terms of Service acceptance is required
 
 ### Theme

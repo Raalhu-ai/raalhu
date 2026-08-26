@@ -7,13 +7,16 @@
 
 let _apiBase = '';
 let _getAuthHeaders: () => Record<string, string> | Promise<Record<string, string>> = () => ({});
+let _onReauthRequired: () => void | Promise<void> = () => {};
 
 export function configureAgent(opts: {
 	apiBase: string;
 	getAuthHeaders: () => Record<string, string> | Promise<Record<string, string>>;
+	onReauthRequired?: () => void | Promise<void>;
 }) {
 	_apiBase = opts.apiBase;
 	_getAuthHeaders = opts.getAuthHeaders;
+	_onReauthRequired = opts.onReauthRequired || (() => {});
 }
 
 export function getConfiguredApiBase(): string {
@@ -136,6 +139,15 @@ const CLOUDCODE_DOMAINS = [
 ];
 
 export function classifyError(status: number, body: string): TerminalQuotaError | RetryableQuotaError | null {
+	try {
+		const apiError = JSON.parse(body);
+		if (status === 429 && apiError?.code === 'RATE_LIMITED') {
+			const delaySeconds = typeof apiError.retryAfterMs === 'number' ? apiError.retryAfterMs / 1000 : undefined;
+			return new RetryableQuotaError(apiError.error || 'Antigravity is rate limited.', delaySeconds);
+		}
+	} catch {
+		// Continue with Google RPC error parsing.
+	}
 	const googleApiError = parseGoogleApiError(body);
 
 	if (status === 503) {
@@ -251,6 +263,14 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
 		if (res.ok) return res;
 
 		const errText = await res.text();
+		if (res.status === 401) {
+			try {
+				const data = JSON.parse(errText);
+				if (data?.code === 'REAUTH_REQUIRED') await _onReauthRequired();
+			} catch {
+				// Preserve non-JSON authentication failures as ordinary responses.
+			}
+		}
 
 		if (res.status === 429 || res.status === 503) {
 			const classified = classifyError(res.status, errText);

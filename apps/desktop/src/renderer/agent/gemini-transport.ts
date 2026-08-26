@@ -61,11 +61,12 @@ export class GeminiChatTransport implements ChatTransport<UIMessage> {
 		body?: object;
 		metadata?: unknown;
 	}): Promise<ReadableStream<UIMessageChunk>> {
-		const { messages, abortSignal } = options;
+		const { messages, abortSignal, chatId } = options;
 		const geminiContents = this.convertToGemini(messages);
 
 		const reqBody = {
 			model: this._model,
+			conversationId: chatId,
 			contents: geminiContents,
 			systemInstruction: this.systemInstruction,
 			tools: AGENT_TOOLS,

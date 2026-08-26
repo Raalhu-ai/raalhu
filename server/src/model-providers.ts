@@ -1,6 +1,7 @@
 import { createGoogle } from '@ai-sdk/google';
 import { generateText, jsonSchema, streamText, type ModelMessage } from 'ai';
 import type { SessionData } from './session';
+import { proxyAntigravity, type RefreshSession } from './antigravity';
 
 export type ModelModule = 'proxy' | 'ai-sdk';
 export type AiProvider = 'google' | 'openai' | 'anthropic';
@@ -19,9 +20,9 @@ export type GeminiRequestBody = {
 	systemInstruction?: unknown;
 	toolConfig?: unknown;
 	userPromptId?: string;
+	conversationId?: string;
 };
 
-const CODE_ASSIST_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
 const DEFAULT_TOOL_INPUT_SCHEMA = { type: 'object', properties: {} };
 const GEMINI_SCHEMA_TYPE_MAP: Record<string, string> = {
 	OBJECT: 'object',
@@ -307,98 +308,17 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 	});
 }
 
-async function generateWithProxy(session: SessionData, body: GeminiRequestBody) {
-	const { accessToken, project } = session;
-	if (!project) {
-		return new Response(JSON.stringify({ error: 'No project set up' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' }
-		});
-	}
+export type ProxyRuntime = {
+	version: string;
+	refreshSession: RefreshSession;
+};
 
-	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } = body;
-	const apiRes = await fetch(`${CODE_ASSIST_BASE}:generateContent`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			project,
-			model: model || 'gemini-3-flash-preview',
-			...(userPromptId && { user_prompt_id: userPromptId }),
-				request: {
-					contents,
-					generationConfig: generationConfig || { maxOutputTokens: 8192 },
-					...(tools ? { tools } : {}),
-					...(systemInstruction ? { systemInstruction } : {}),
-					...(toolConfig ? { toolConfig } : {})
-				}
-			})
-		});
-
-	if (!apiRes.ok) {
-		const errBody = await apiRes.text();
-		return new Response(errBody, {
-			status: apiRes.status,
-			headers: { 'Content-Type': 'text/plain' }
-		});
-	}
-
-	return new Response(await apiRes.text(), {
-		headers: { 'Content-Type': 'application/json' }
-	});
-}
-
-async function streamWithProxy(session: SessionData, body: GeminiRequestBody) {
-	const { accessToken, project } = session;
-	if (!project) {
-		return new Response(JSON.stringify({ error: 'No project set up' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' }
-		});
-	}
-
-	const { model, contents, generationConfig, tools, systemInstruction, toolConfig, userPromptId } = body;
-	const apiRes = await fetch(`${CODE_ASSIST_BASE}:streamGenerateContent?alt=sse`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			project,
-			model: model || 'gemini-3-flash-preview',
-			...(userPromptId && { user_prompt_id: userPromptId }),
-				request: {
-					contents,
-					generationConfig: generationConfig || { maxOutputTokens: 8192 },
-					...(tools ? { tools } : {}),
-					...(systemInstruction ? { systemInstruction } : {}),
-					...(toolConfig ? { toolConfig } : {})
-				}
-			})
-		});
-
-	if (!apiRes.ok) {
-		const errBody = await apiRes.text();
-		return new Response(errBody, {
-			status: apiRes.status,
-			headers: { 'Content-Type': 'text/plain' }
-		});
-	}
-
-	return new Response(apiRes.body, {
-		headers: {
-			'Content-Type': 'text/event-stream',
-			'Cache-Control': 'no-cache',
-			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no'
-		}
-	});
-}
-
-export async function generateModel(route: ModelRoute, body: GeminiRequestBody, session: SessionData) {
+export async function generateModel(
+	route: ModelRoute,
+	body: GeminiRequestBody,
+	session: SessionData,
+	runtime: ProxyRuntime
+) {
 	if (route.module === 'ai-sdk') {
 		try {
 			const data = await generateWithAiSdk(route, body);
@@ -416,10 +336,15 @@ export async function generateModel(route: ModelRoute, body: GeminiRequestBody, 
 		}
 	}
 
-	return generateWithProxy(session, body);
+	return proxyAntigravity(session, body, runtime.version, false, runtime.refreshSession);
 }
 
-export async function streamModel(route: ModelRoute, body: GeminiRequestBody, session: SessionData) {
+export async function streamModel(
+	route: ModelRoute,
+	body: GeminiRequestBody,
+	session: SessionData,
+	runtime: ProxyRuntime
+) {
 	if (route.module === 'ai-sdk') {
 		try {
 			const stream = await streamWithAiSdk(route, body);
@@ -442,5 +367,5 @@ export async function streamModel(route: ModelRoute, body: GeminiRequestBody, se
 		}
 	}
 
-	return streamWithProxy(session, body);
+	return proxyAntigravity(session, body, runtime.version, true, runtime.refreshSession);
 }

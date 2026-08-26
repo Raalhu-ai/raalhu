@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const BACKEND = (platform?.env as any)?.BACKEND_URL || 'http://localhost:3000';
 	const body = await request.json();
-	const { model, contents, systemInstruction, tools, toolConfig, generationConfig, memories } = body;
+	const { model, contents, systemInstruction, tools, toolConfig, generationConfig, memories, conversationId } = body;
 
 	const cookie = request.headers.get('cookie') || '';
 	const modelModule = request.headers.get('x-model-module')?.trim();
@@ -19,7 +19,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	const payload = {
 		model: model || 'gemini-3-flash-preview',
 		contents,
-		generationConfig: generationConfig || { maxOutputTokens: 65536 },
+		...(generationConfig && { generationConfig }),
+		...(conversationId && { conversationId }),
 		...(systemInstruction && { systemInstruction }),
 		...(memories && { memories }),
 		...(tools && { tools }),
@@ -38,9 +39,12 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	if (!backendRes.ok) {
 		const err = await backendRes.text();
 		console.error(`[stream proxy] Backend error ${backendRes.status}:`, err.slice(0, 500));
+		const headers = new Headers({ 'Content-Type': backendRes.headers.get('Content-Type') || 'application/json' });
+		const setCookie = backendRes.headers.get('set-cookie');
+		if (setCookie) headers.set('Set-Cookie', setCookie);
 		return new Response(err, {
 			status: backendRes.status,
-			headers: { 'Content-Type': 'text/plain' }
+			headers
 		});
 	}
 

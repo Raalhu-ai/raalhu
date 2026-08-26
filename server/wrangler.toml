@@ -2,6 +2,10 @@ name = "mogger-api"
 main = "src/worker.ts"
 compatibility_date = "2024-12-01"
 
+[vars]
+ANTIGRAVITY_REDIRECT_URI = "https://codeassist.google.com/authcode"
+ANTIGRAVITY_CLIENT_VERSION = "2.9.1"
+
 # Create your own KV namespaces: wrangler kv:namespace create AUTH_SESSIONS && wrangler kv:namespace create SESSIONS
 # Then set KV_AUTH_SESSIONS_ID and KV_SESSIONS_ID in your .env or shell environment
 [[kv_namespaces]]
@@ -28,5 +32,5 @@ persist = true
 head_sampling_rate = 1
 
 # Secrets (set via `wrangler secret put`):
-#   OAUTH_CLIENT_ID     — Google OAuth client ID (Gemini CLI's installed-app client)
-#   OAUTH_CLIENT_SECRET — Google OAuth client secret
+#   ANTIGRAVITY_OAUTH_CLIENT_ID     — developer-owned Google OAuth client ID
+#   ANTIGRAVITY_OAUTH_CLIENT_SECRET — developer-owned Google OAuth client secret

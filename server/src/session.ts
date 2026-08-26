@@ -3,7 +3,12 @@
  * Sessions are stored in a SESSIONS KV namespace, referenced by a UUID cookie.
  */
 
+export type AccountType = 'unknown' | 'consumer' | 'enterprise' | 'paygo';
+
 export interface SessionData {
+	schemaVersion: 2;
+	authProvider: 'antigravity';
+	accountType: AccountType;
 	accessToken: string;
 	refreshToken: string;
 	expiresAt: number;
@@ -12,6 +17,13 @@ export interface SessionData {
 	picture: string;
 	project: string | null;
 	tier: string | null;
+}
+
+/** Legacy Gemini CLI sessions deliberately fail this check and must reauthenticate. */
+export function isCurrentSession(value: unknown): value is SessionData {
+	if (!value || typeof value !== 'object') return false;
+	const session = value as Partial<SessionData>;
+	return session.schemaVersion === 2 && session.authProvider === 'antigravity';
 }
 
 const COOKIE_NAME = 'session';
@@ -33,7 +45,11 @@ export async function loadSession(
 ): Promise<SessionData | null> {
 	const raw = await kv.get(sessionId);
 	if (!raw) return null;
-	return JSON.parse(raw);
+	try {
+		return JSON.parse(raw);
+	} catch {
+		return null;
+	}
 }
 
 /** Save session data to KV. */

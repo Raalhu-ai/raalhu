@@ -10,9 +10,12 @@ export const GET: RequestHandler = async ({ request, platform }) => {
 		});
 
 		const data = await res.json();
+		const headers = new Headers({ 'Content-Type': 'application/json' });
+		const setCookie = res.headers.get('set-cookie');
+		if (setCookie) headers.set('Set-Cookie', setCookie);
 		return new Response(JSON.stringify(data), {
 			status: res.status,
-			headers: { 'Content-Type': 'application/json' }
+			headers
 		});
 	} catch {
 		return new Response(JSON.stringify({ error: 'Not authenticated' }), {

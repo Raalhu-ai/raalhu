@@ -2,6 +2,10 @@ name = "mogger-api"
 main = "src/worker.ts"
 compatibility_date = "2024-12-01"
 
+[vars]
+ANTIGRAVITY_REDIRECT_URI = "https://codeassist.google.com/authcode"
+ANTIGRAVITY_CLIENT_VERSION = "2.9.1"
+
 # KV namespace IDs — create your own with:
 #   cd server && bunx wrangler kv namespace create AUTH_SESSIONS
 #   cd server && bunx wrangler kv namespace create SESSIONS
@@ -30,5 +34,5 @@ persist = true
 head_sampling_rate = 1
 
 # Secrets (set via `bunx wrangler secret put` for production, or .dev.vars for local dev):
-#   OAUTH_CLIENT_ID     — Google OAuth client ID
-#   OAUTH_CLIENT_SECRET — Google OAuth client secret
+#   ANTIGRAVITY_OAUTH_CLIENT_ID     — developer-owned Google OAuth client ID
+#   ANTIGRAVITY_OAUTH_CLIENT_SECRET — developer-owned Google OAuth client secret

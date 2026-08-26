@@ -36,9 +36,13 @@ Thanks for your interest in contributing! This guide will help you get started.
 
    Add your OAuth credentials to `server/.dev.vars` (create the file if it doesn't exist):
    ```
-   OAUTH_CLIENT_ID=your-google-oauth-client-id
-   OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+   ANTIGRAVITY_OAUTH_CLIENT_ID=your-google-oauth-client-id
+   ANTIGRAVITY_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+   ANTIGRAVITY_REDIRECT_URI=https://codeassist.google.com/authcode
+   ANTIGRAVITY_CLIENT_VERSION=2.9.1
    ```
+
+   The OAuth client must be developer-owned and have the configured redirect URI registered. Do not reuse credentials from Antigravity or another proxy.
 
 5. Start the dev server:
    ```bash

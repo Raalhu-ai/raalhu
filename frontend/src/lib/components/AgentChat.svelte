@@ -550,7 +550,7 @@
 						}
 					: undefined;
 
-			const loop = agentLoop({ model, contents, systemInstruction, sandbox, memories });
+			const loop = agentLoop({ model, conversationId: sessionId, contents, systemInstruction, sandbox, memories });
 
 			for await (const event of loop) {
 				const steps = assistantMsg.steps!;

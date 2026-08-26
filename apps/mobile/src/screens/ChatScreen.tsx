@@ -227,6 +227,7 @@ function ChatScreenInner({
     try {
       const loop = agentLoop({
         model,
+		conversationId: sessionId,
         contents: contentsRef.current,
         systemInstruction,
         sandbox,

@@ -11,7 +11,7 @@ import { ProjectCreateDialog } from "./components/ProjectCreateDialog";
 import { ProjectsListPage } from "./components/ProjectsListPage";
 import { ProjectView } from "./components/ProjectView";
 import { ArtifactsGallery } from "./components/ArtifactsGallery";
-import { fetchMe, fetchQuota, setupCodeAssist, logout, API_BASE, authHeaders, type User, type QuotaModel } from "./api";
+import { fetchMe, fetchQuota, setupCodeAssist, logout, clearSession, API_BASE, authHeaders, type User, type QuotaModel } from "./api";
 import { applyFontSize, applyTheme } from "./settings";
 import { PanelLeft, Plus, Waves, Loader2 } from "lucide-react";
 import { configureAgent } from "./agent/retry";
@@ -108,6 +108,7 @@ export default function App() {
     configureAgent({
       apiBase: API_BASE,
       getAuthHeaders: authHeaders,
+      onReauthRequired: clearSession,
     });
 
     fetchMe().then(async (u) => {
@@ -128,6 +129,9 @@ export default function App() {
           if (msg.startsWith("TOS_REQUIRED:")) {
             setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
             setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
+          } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+            setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
+            setSetupError("Google requires account verification before Antigravity can be used.");
           } else {
             setSetupError(msg);
           }
@@ -217,6 +221,9 @@ export default function App() {
       if (msg.startsWith("TOS_REQUIRED:")) {
         setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
         setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
+      } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+        setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
+        setSetupError("Google requires account verification before Antigravity can be used.");
       } else {
         setSetupError(msg);
       }
