@@ -6,6 +6,7 @@ import {
 	AntigravityError,
 	buildAntigravityEnvelope,
 	classifyAccountType,
+	extractProjectFromPayload,
 	fetchAntigravityQuota,
 	normalizeAvailableModels,
 	proxyAntigravity,
@@ -133,6 +134,12 @@ describe('Antigravity identity and sessions', () => {
 });
 
 describe('Antigravity setup and quota', () => {
+	test('extracts known project response variants without treating operation names as projects', () => {
+		expect(extractProjectFromPayload({ projectId: 'project-id' })).toBe('project-id');
+		expect(extractProjectFromPayload({ response: { project: { id: 'nested-project' } } })).toBe('nested-project');
+		expect(extractProjectFromPayload({ name: 'operations/onboarding-1', done: false })).toBeNull();
+	});
+
 	test('loads existing projects from the production control plane', async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -177,6 +184,58 @@ describe('Antigravity setup and quota', () => {
 			tier_id: 'free-tier',
 			metadata: { ide_type: 'ANTIGRAVITY', ide_name: 'ANTIGRAVITY', ide_version: '2.9.1' }
 		});
+	});
+
+	test('reloads project discovery after completed onboarding without a project', async () => {
+		const calls: string[] = [];
+		const responses = [
+			jsonResponse({ allowedTiers: [{ id: 'free-tier', isDefault: true }] }),
+			jsonResponse({ done: true, response: { tier_id: 'free-tier' } }),
+			jsonResponse({ currentTier: { id: 'free-tier' } }),
+			jsonResponse({ projectId: 'eventually-consistent-project', currentTier: { id: 'free-tier' } })
+		];
+		const fetcher = (async (input: RequestInfo | URL) => {
+			calls.push(String(input));
+			return responses.shift()!;
+		}) as typeof fetch;
+
+		const result = await setupAntigravity(
+			session({ project: null, tier: null, accountType: 'unknown' }),
+			'2.9.1',
+			fetcher,
+			async () => {}
+		);
+
+		expect(result.project).toBe('eventually-consistent-project');
+		expect(calls).toEqual([
+			`${ANTIGRAVITY_CONTROL_BASE}/v1internal:loadCodeAssist`,
+			`${ANTIGRAVITY_CONSUMER_BASE}/v1internal:onboardUser`,
+			`${ANTIGRAVITY_CONTROL_BASE}/v1internal:loadCodeAssist`,
+			`${ANTIGRAVITY_CONTROL_BASE}/v1internal:loadCodeAssist`
+		]);
+	});
+
+	test('reports only response field names when project discovery remains empty', async () => {
+		const responses = [
+			jsonResponse({ allowedTiers: [{ id: 'free-tier', isDefault: true }] }),
+			jsonResponse({ done: true, response: { tier_id: 'free-tier', diagnostic: 'do-not-expose' } }),
+			...Array.from({ length: 5 }, () => jsonResponse({ currentTier: { id: 'free-tier' }, diagnostic: 'do-not-expose' }))
+		];
+		const fetcher = (async () => responses.shift()!) as typeof fetch;
+
+		try {
+			await setupAntigravity(
+				session({ project: null, tier: null, accountType: 'unknown' }),
+				'2.9.1',
+				fetcher,
+				async () => {}
+			);
+			throw new Error('Expected setup to fail');
+		} catch (error) {
+			expect(error).toBeInstanceOf(AntigravityError);
+			expect((error as AntigravityError).details).toContain('diagnostic');
+			expect((error as AntigravityError).details).not.toContain('do-not-expose');
+		}
 	});
 
 	test('rejects explicit enterprise accounts before onboarding', async () => {

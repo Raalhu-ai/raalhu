@@ -14,6 +14,8 @@ export const ANTIGRAVITY_SCOPES = [
 const NODE_API_USER_AGENT = 'google-api-nodejs-client/10.3.0';
 const GOOG_API_CLIENT = 'gl-node/22.21.1';
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
+const PROJECT_DISCOVERY_ATTEMPTS = 5;
+const PROJECT_DISCOVERY_DELAY_MS = 2000;
 
 function emitMetric(event: string, fields: Record<string, unknown>): void {
 	console.log(JSON.stringify({ event, ...fields }));
@@ -115,6 +117,26 @@ export function extractProject(value: unknown): string | null {
 		: typeof source.name === 'string'
 			? source.name
 			: null;
+}
+
+export function extractProjectFromPayload(value: unknown): string | null {
+	if (!isRecord(value)) return extractProject(value);
+	for (const key of [
+		'cloudaicompanionProject',
+		'cloudaicompanion_project',
+		'projectId',
+		'project_id',
+		'project'
+	]) {
+		const project = extractProject(value[key]);
+		if (project) return project;
+	}
+	return isRecord(value.response) ? extractProjectFromPayload(value.response) : null;
+}
+
+function safeShape(value: unknown): string {
+	if (!isRecord(value)) return typeof value;
+	return Object.keys(value).sort().slice(0, 20).join(',') || '(empty object)';
 }
 
 function entitlementText(value: unknown): string {
@@ -257,19 +279,22 @@ export async function setupAntigravity(
 	sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 ): Promise<AntigravitySetupResult> {
 	const authHeaders = { Authorization: `Bearer ${session.accessToken}` };
-	const loadRes = await fetcher(`${ANTIGRAVITY_CONTROL_BASE}/v1internal:loadCodeAssist`, {
-		method: 'POST',
-		headers: { ...setupHeaders(version), ...authHeaders },
-		body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } })
-	});
-	if (!loadRes.ok) await readError(loadRes);
+	const loadCodeAssist = async (): Promise<any> => {
+		const response = await fetcher(`${ANTIGRAVITY_CONTROL_BASE}/v1internal:loadCodeAssist`, {
+			method: 'POST',
+			headers: { ...setupHeaders(version), ...authHeaders },
+			body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } })
+		});
+		if (!response.ok) await readError(response);
+		return response.json();
+	};
 
-	const loadData = (await loadRes.json()) as any;
+	const loadData = await loadCodeAssist();
 	const accountType = classifyAccountType(loadData);
 	session.accountType = accountType;
 	if (accountType !== 'consumer') throw unsupportedAccountError(accountType);
 
-	const existingProject = extractProject(loadData.cloudaicompanionProject);
+	const existingProject = extractProjectFromPayload(loadData);
 	if (existingProject) {
 		const tier = loadData.currentTier?.id || loadData.current_tier?.id || 'free';
 		session.project = existingProject;
@@ -306,7 +331,8 @@ export async function setupAntigravity(
 			const pollRes = await fetcher(`${ANTIGRAVITY_CONSUMER_BASE}/${operationName}`, {
 				headers: { ...setupHeaders(resolvedVersion, true), ...authHeaders }
 			});
-			if (pollRes.ok) onboardData = await pollRes.json();
+			if (!pollRes.ok) await readError(pollRes);
+			onboardData = await pollRes.json();
 		}
 		if (!onboardData.done) {
 			throw new AntigravityError(504, 'SETUP_FAILED', 'Antigravity onboarding timed out.');
@@ -314,11 +340,28 @@ export async function setupAntigravity(
 	}
 
 	const response = onboardData.response || onboardData;
-	const project = extractProject(response.cloudaicompanionProject || response.cloudaicompanion_project);
-	if (!project) {
-		throw new AntigravityError(502, 'SETUP_FAILED', 'Antigravity onboarding did not return a project.');
+	let project = extractProjectFromPayload(onboardData);
+	let discoveredLoadData: any = null;
+	for (let attempt = 0; !project && attempt < PROJECT_DISCOVERY_ATTEMPTS; attempt++) {
+		await sleep(PROJECT_DISCOVERY_DELAY_MS);
+		discoveredLoadData = await loadCodeAssist();
+		const discoveredAccountType = classifyAccountType(discoveredLoadData);
+		session.accountType = discoveredAccountType;
+		if (discoveredAccountType !== 'consumer') throw unsupportedAccountError(discoveredAccountType);
+		project = extractProjectFromPayload(discoveredLoadData);
 	}
-	const tierId = response.tierId || response.tier_id || tier.id || 'free';
+	if (!project) {
+		throw new AntigravityError(502, 'SETUP_FAILED', 'Antigravity onboarding did not return a project.', {
+			details: `onboard keys: ${safeShape(onboardData)}; response keys: ${safeShape(response)}; loadCodeAssist keys: ${safeShape(discoveredLoadData)}`
+		});
+	}
+	const tierId =
+		response.tierId ||
+		response.tier_id ||
+		discoveredLoadData?.currentTier?.id ||
+		discoveredLoadData?.current_tier?.id ||
+		tier.id ||
+		'free';
 	session.project = project;
 	session.tier = tierId;
 	return { project, tier: tierId, status: 'ready', provider: 'antigravity', accountType: 'consumer' };
