@@ -3,12 +3,14 @@ import type { GeminiRequestBody } from './model-providers';
 
 export const ANTIGRAVITY_CONTROL_BASE = 'https://cloudcode-pa.googleapis.com';
 export const ANTIGRAVITY_CONSUMER_BASE = 'https://daily-cloudcode-pa.googleapis.com';
-export const ANTIGRAVITY_PROTOCOL_VERSION = 2 as const;
+export const ANTIGRAVITY_PROTOCOL_VERSION = 3 as const;
 export const ANTIGRAVITY_MIN_CLIENT_VERSION = '2.9.1';
 export const ANTIGRAVITY_SCOPES = [
 	'https://www.googleapis.com/auth/cloud-platform',
 	'https://www.googleapis.com/auth/userinfo.email',
-	'https://www.googleapis.com/auth/userinfo.profile'
+	'https://www.googleapis.com/auth/userinfo.profile',
+	'https://www.googleapis.com/auth/cclog',
+	'https://www.googleapis.com/auth/experimentsandconfigs'
 ] as const;
 
 const NODE_API_USER_AGENT = 'google-api-nodejs-client/10.3.0';
@@ -27,6 +29,7 @@ export type ApiErrorCode =
 	| 'TOS_REQUIRED'
 	| 'ACCOUNT_VERIFICATION_REQUIRED'
 	| 'REGION_UNSUPPORTED'
+	| 'PERMISSION_DENIED'
 	| 'RATE_LIMITED'
 	| 'MODEL_UNAVAILABLE'
 	| 'UPSTREAM_UNAVAILABLE'
@@ -109,32 +112,54 @@ export function onboardUserAgent(version: string): string {
 
 export function extractProject(value: unknown): string | null {
 	if (!value) return null;
-	if (typeof value === 'string') return value;
+	if (typeof value === 'string') return value.trim() || null;
 	if (typeof value !== 'object') return null;
 	const source = value as Record<string, unknown>;
-	return typeof source.id === 'string'
-		? source.id
-		: typeof source.name === 'string'
-			? source.name
-			: null;
+	for (const key of ['id', 'name', 'projectId', 'project_id', 'projectNumber', 'project_number']) {
+		const candidate = source[key];
+		if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+		if (key.toLowerCase().includes('number') && typeof candidate === 'number' && Number.isFinite(candidate)) {
+			return String(candidate);
+		}
+	}
+	return null;
 }
+
+const PROJECT_PAYLOAD_KEYS = [
+	'cloudaicompanionProject',
+	'cloudaicompanion_project',
+	'cloudcompanionProject',
+	'cloudCompanionProject',
+	'cloud_companion_project',
+	'projectId',
+	'project_id',
+	'project'
+] as const;
 
 export function extractProjectFromPayload(value: unknown): string | null {
 	if (!isRecord(value)) return extractProject(value);
-	for (const key of [
-		'cloudaicompanionProject',
-		'cloudaicompanion_project',
-		'cloudcompanionProject',
-		'cloudCompanionProject',
-		'cloud_companion_project',
-		'projectId',
-		'project_id',
-		'project'
-	]) {
+	for (const key of PROJECT_PAYLOAD_KEYS) {
 		const project = extractProject(value[key]);
 		if (project) return project;
 	}
 	return isRecord(value.response) ? extractProjectFromPayload(value.response) : null;
+}
+
+function projectValueShape(value: unknown): string {
+	if (value === null) return 'null';
+	if (Array.isArray(value)) return 'array';
+	if (isRecord(value)) return `object(${safeShape(value)})`;
+	return typeof value;
+}
+
+function projectShapeFromPayload(value: unknown): string {
+	if (!isRecord(value)) return 'project field absent';
+	for (const key of PROJECT_PAYLOAD_KEYS) {
+		if (Object.prototype.hasOwnProperty.call(value, key)) {
+			return `${key}: ${projectValueShape(value[key])}`;
+		}
+	}
+	return isRecord(value.response) ? projectShapeFromPayload(value.response) : 'project field absent';
 }
 
 function safeShape(value: unknown): string {
@@ -225,6 +250,9 @@ export function classifyUpstreamError(
 	if (lower.includes('user location is not supported')) {
 		return new AntigravityError(400, 'REGION_UNSUPPORTED', 'Antigravity is not available from the current region.', { details });
 	}
+	if (status === 403) {
+		return new AntigravityError(403, 'PERMISSION_DENIED', 'Google denied access to Antigravity for this sign-in.', { details });
+	}
 	if (status === 429) {
 		const headerSeconds = Number(headers?.get('Retry-After'));
 		const retryAfterMs = Number.isFinite(headerSeconds)
@@ -237,6 +265,9 @@ export function classifyUpstreamError(
 	}
 	if (status === 404) {
 		return new AntigravityError(404, 'MODEL_UNAVAILABLE', 'The selected model is not available for this account.', { details });
+	}
+	if (status === 400) {
+		return new AntigravityError(400, 'INVALID_REQUEST', 'Google rejected the request for the selected model.', { details });
 	}
 	return new AntigravityError(
 		status >= 400 && status < 600 ? status : 502,
@@ -355,7 +386,7 @@ export async function setupAntigravity(
 	}
 	if (!project) {
 		throw new AntigravityError(502, 'SETUP_FAILED', 'Antigravity onboarding did not return a project.', {
-			details: `onboard keys: ${safeShape(onboardData)}; response keys: ${safeShape(response)}; loadCodeAssist keys: ${safeShape(discoveredLoadData)}`
+			details: `onboard keys: ${safeShape(onboardData)}; response keys: ${safeShape(response)}; project shape: ${projectShapeFromPayload(onboardData)}; loadCodeAssist keys: ${safeShape(discoveredLoadData)}`
 		});
 	}
 	const tierId =
@@ -377,6 +408,10 @@ export type QuotaModel = {
 	resetTime: string;
 };
 
+export function isAllowedGeminiModel(model: unknown): model is string {
+	return typeof model === 'string' && /^gemini-[a-z0-9][a-z0-9.-]*$/.test(model);
+}
+
 export function normalizeAvailableModels(data: any): QuotaModel[] {
 	const models = data?.models && typeof data.models === 'object' ? data.models : {};
 	return Object.entries(models)
@@ -384,13 +419,15 @@ export function normalizeAvailableModels(data: any): QuotaModel[] {
 			const model = raw as any;
 			const quota = model.quotaInfo || model.quota_info || {};
 			return {
-				modelId: model.model || model.modelId || key,
+				// The map key is the generation ID. `model` is an internal enum
+				// (e.g. MODEL_GOOGLE_GEMINI_2_5_FLASH_THINKING), not a request ID.
+				modelId: key,
 				remainingFraction: Number(quota.remainingFraction ?? quota.remaining_fraction ?? model.remainingFraction ?? 0),
 				tokenType: quota.tokenType || quota.token_type || model.tokenType || 'requests',
 				resetTime: quota.resetTime || quota.reset_time || model.resetTime || ''
 			};
 		})
-		.filter((model) => model.modelId && !model.modelId.endsWith('_vertex'));
+		.filter((model) => isAllowedGeminiModel(model.modelId));
 }
 
 export async function fetchAntigravityQuota(
@@ -559,7 +596,9 @@ export function buildAntigravityEnvelope(session: SessionData, body: GeminiReque
 	}
 	const contents = sanitizeParts(body.contents);
 	validateToolTurns(contents);
-	const model = body.model || 'gemini-3-flash-preview';
+	// The public Gemini API name differs from the Antigravity model ID.
+	const requestedModel = body.model || 'gemini-3-flash-preview';
+	const model = requestedModel === 'gemini-3-flash-preview' ? 'gemini-3-flash' : requestedModel;
 	const isImage = model.toLowerCase().includes('image');
 	const sessionId = stableSessionId(body.conversationId?.trim() || firstUserText(contents));
 	return {

@@ -168,8 +168,8 @@ Storage is platform-specific:
 - `loadCodeAssist` returns project as a **string**; `onboardUser` returns it as an **object** `{ id, name, projectNumber }`
 - `loadCodeAssist` uses the production control-plane host with `{ metadata: { ideType: "ANTIGRAVITY" } }`
 - Consumer onboarding, quota discovery, and generation use `daily-cloudcode-pa.googleapis.com`; generation must never fall back to production, staging, or sandbox hosts
-- Developer-owned OAuth clients request only `cloud-platform` and user profile scopes; Google's allowlisted `cclog` and `experimentsandconfigs` scopes return `403 restricted_client`
-- Sessions require `schemaVersion: 2` and `authProvider: "antigravity"`; older sessions must reauthenticate
+- Antigravity OAuth uses the installed-app client referenced in `server/src/antigravity-oauth.ts`, configured through `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` Worker secrets, with all five scopes; developer-owned clients cannot obtain the required restricted scopes. Login accepts the complete localhost callback URL and validates its state; retain PKCE.
+- Sessions require `schemaVersion: 3` and `authProvider: "antigravity"`; older sessions must reauthenticate
 - Explicit enterprise and PayGo accounts are unsupported by the proxy but remain usable with BYOK; unknown entitlement metadata is treated as consumer
 - HTTP 428 from the API means Terms of Service acceptance is required
 

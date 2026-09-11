@@ -3,7 +3,6 @@ main = "src/worker.ts"
 compatibility_date = "2024-12-01"
 
 [vars]
-ANTIGRAVITY_REDIRECT_URI = "https://codeassist.google.com/authcode"
 ANTIGRAVITY_CLIENT_VERSION = "2.9.1"
 
 # Create your own KV namespaces: wrangler kv:namespace create AUTH_SESSIONS && wrangler kv:namespace create SESSIONS
@@ -31,6 +30,5 @@ enabled = false
 persist = true
 head_sampling_rate = 1
 
-# Secrets (set via `wrangler secret put`):
-#   ANTIGRAVITY_OAUTH_CLIENT_ID     — developer-owned Google OAuth client ID
-#   ANTIGRAVITY_OAUTH_CLIENT_SECRET — developer-owned Google OAuth client secret
+# Set ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET as Worker secrets.
+# The installed-app identity reference and callback are in src/antigravity-oauth.ts.

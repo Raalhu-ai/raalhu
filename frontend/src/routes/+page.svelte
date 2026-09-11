@@ -89,7 +89,9 @@
 	// When quotas load, ensure selectedModel is valid
 	$effect(() => {
 		if (models.length > 0 && !models.includes(selectedModel)) {
-			selectedModel = models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : models[0];
+			selectedModel = models.includes(DEFAULT_MODEL)
+				? DEFAULT_MODEL
+				: models.includes('gemini-3-flash') ? 'gemini-3-flash' : models[0];
 		}
 	});
 

@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { ANTIGRAVITY_REDIRECT_URI, parseAntigravityCallback } from './antigravity-oauth';
 import { cors } from 'hono/cors';
 import {
 	type SessionData,
@@ -16,6 +17,7 @@ import {
 	ANTIGRAVITY_SCOPES,
 	AntigravityError,
 	apiErrorBody,
+	isAllowedGeminiModel,
 	fetchAntigravityQuota,
 	resolveClientVersion,
 	setupAntigravity
@@ -27,10 +29,9 @@ type Env = {
 	Bindings: {
 		AUTH_SESSIONS: KVNamespace;
 		SESSIONS: KVNamespace;
+		ANTIGRAVITY_CLIENT_VERSION: string;
 		ANTIGRAVITY_OAUTH_CLIENT_ID: string;
 		ANTIGRAVITY_OAUTH_CLIENT_SECRET: string;
-		ANTIGRAVITY_REDIRECT_URI: string;
-		ANTIGRAVITY_CLIENT_VERSION: string;
 	};
 	Variables: {
 		session: SessionData;
@@ -244,9 +245,12 @@ function resolveModelRoute(c: Context<Env>): ModelRoute {
 // ==================== AUTH ROUTES ====================
 
 app.get('/auth/start', async (c) => {
+	if (!c.env.ANTIGRAVITY_OAUTH_CLIENT_ID || !c.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET) {
+		return c.json({ error: 'Antigravity OAuth credentials are not configured.' }, 503);
+	}
 	const { verifier, challenge } = await generatePKCE();
 	const state = crypto.randomUUID();
-	const redirectUri = c.env.ANTIGRAVITY_REDIRECT_URI;
+	const redirectUri = ANTIGRAVITY_REDIRECT_URI;
 
 	await c.env.AUTH_SESSIONS.put(state, JSON.stringify({ verifier, redirectUri }), {
 		expirationTtl: 600 // 10 minutes
@@ -259,7 +263,6 @@ app.get('/auth/start', async (c) => {
 		scope: SCOPES,
 		access_type: 'offline',
 		prompt: 'consent',
-		include_granted_scopes: 'true',
 		state,
 		code_challenge: challenge,
 		code_challenge_method: 'S256'
@@ -271,9 +274,9 @@ app.get('/auth/start', async (c) => {
 });
 
 app.post('/auth/exchange', async (c) => {
-	const { code, state } = (await c.req.json()) as { code: string; state: string };
+	const { code: callbackUrl, state } = (await c.req.json()) as { code: unknown; state: unknown };
 
-	if (!code || !state) {
+	if (typeof callbackUrl !== 'string' || typeof state !== 'string' || !state) {
 		return c.json({ error: 'Missing code or state' }, 400);
 	}
 
@@ -286,6 +289,12 @@ app.post('/auth/exchange', async (c) => {
 		);
 	}
 	const { verifier, redirectUri } = JSON.parse(stored) as { verifier: string; redirectUri: string };
+	let code: string;
+	try {
+		code = parseAntigravityCallback(callbackUrl, state, redirectUri);
+	} catch (error) {
+		return c.json({ error: (error as Error).message }, 400);
+	}
 	await c.env.AUTH_SESSIONS.delete(state);
 
 	// Exchange the code for tokens
@@ -303,8 +312,7 @@ app.post('/auth/exchange', async (c) => {
 	});
 
 	if (!tokenRes.ok) {
-		const detail = await tokenRes.text();
-		console.error('Token exchange failed:', detail);
+		console.error('Token exchange failed:', tokenRes.status);
 		return c.json(
 			{ error: 'Token exchange failed. The code may have already been used or expired.' },
 			400
@@ -312,6 +320,10 @@ app.post('/auth/exchange', async (c) => {
 	}
 
 	const tokens: any = await tokenRes.json();
+	const grantedScopes = new Set(typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/) : []);
+	if (!tokens.access_token || !ANTIGRAVITY_SCOPES.every((scope) => grantedScopes.has(scope))) {
+		return c.json({ error: 'Google did not grant all permissions required for Antigravity. Please sign in again and grant the requested permissions.', code: 'REAUTH_REQUIRED' }, 403);
+	}
 	if (!tokens.refresh_token) {
 		return c.json(
 			{ error: 'Google did not return an offline refresh token. Please sign in again.', code: 'REAUTH_REQUIRED' },
@@ -323,7 +335,9 @@ app.post('/auth/exchange', async (c) => {
 	const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
 		headers: { Authorization: `Bearer ${tokens.access_token}` }
 	});
+	if (!userInfoRes.ok) return c.json({ error: 'Could not verify the Google account. Please sign in again.' }, 502);
 	const userInfo: any = await userInfoRes.json();
+	if (typeof userInfo.email !== 'string') return c.json({ error: 'Google did not return an account email.' }, 502);
 
 	// Persist session in KV
 	const sessionId = crypto.randomUUID();
@@ -382,6 +396,13 @@ app.post('/auth/logout', async (c) => {
 
 // ==================== API ROUTES ====================
 
+async function verifyAntigravityAccess(session: SessionData, version: string): Promise<void> {
+	const models = await fetchAntigravityQuota(session, version);
+	if (!models.length) {
+		throw new AntigravityError(403, 'PERMISSION_DENIED', 'Google has not made any Antigravity models available for this sign-in.');
+	}
+}
+
 app.post('/api/setup', authMiddleware, async (c) => {
 	let session = c.get('session');
 	const sessionId = c.get('sessionId');
@@ -392,12 +413,14 @@ app.post('/api/setup', authMiddleware, async (c) => {
 		let result;
 		try {
 			result = await setupAntigravity(session, version);
+			await verifyAntigravityAccess(session, version);
 		} catch (error) {
 			if (!(error instanceof AntigravityError) || error.code !== 'REAUTH_REQUIRED') throw error;
 			const refreshed = await getValidAccessToken(sessionId, c.env, true);
 			if (!refreshed) throw error;
 			session = refreshed.session;
 			result = await setupAntigravity(session, version);
+			await verifyAntigravityAccess(session, version);
 		}
 		await saveSession(sessionId, session, c.env.SESSIONS);
 		console.log(JSON.stringify({ event: 'antigravity_setup', outcome: 'ready', accountType: session.accountType, latencyMs: Date.now() - startedAt }));
@@ -424,6 +447,9 @@ app.post('/api/generate', authMiddleware, async (c) => {
 	const routing = route.module === 'ai-sdk' ? 'byok' : 'antigravity';
 
 	try {
+		if (!isAllowedGeminiModel(body.model ?? "gemini-3-flash-preview")) {
+			throw new AntigravityError(400, "INVALID_REQUEST", "Only Gemini models are supported.");
+		}
 		const response = await generateModel(route, body, session, {
 			version: resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION),
 			refreshSession: async () => (await getValidAccessToken(c.get('sessionId'), c.env, true))?.session || null
@@ -449,6 +475,9 @@ app.post('/api/stream', authMiddleware, async (c) => {
 	const routing = route.module === 'ai-sdk' ? 'byok' : 'antigravity';
 
 	try {
+		if (!isAllowedGeminiModel(body.model ?? "gemini-3-flash-preview")) {
+			throw new AntigravityError(400, "INVALID_REQUEST", "Only Gemini models are supported.");
+		}
 		const response = await streamModel(route, body, session, {
 			version: resolveClientVersion(c.env.ANTIGRAVITY_CLIENT_VERSION),
 			refreshSession: async () => (await getValidAccessToken(c.get('sessionId'), c.env, true))?.session || null

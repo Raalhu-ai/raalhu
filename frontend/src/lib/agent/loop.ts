@@ -157,7 +157,12 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			if (!response.ok) {
 				const errText = await response.text();
 				console.error(`[AgentLoop] API error ${response.status}:`, errText);
-				throw new Error(`API error (${response.status}): ${errText}`);
+				let message = errText;
+				try {
+					const error = JSON.parse(errText);
+					if (typeof error.error === 'string') message = error.error;
+				} catch { /* Keep plain-text errors readable. */ }
+				throw new Error(`API error (${response.status}): ${message}`);
 			}
 			return response;
 		}

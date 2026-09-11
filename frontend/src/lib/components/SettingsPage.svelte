@@ -387,7 +387,7 @@
 		{ value: 'large', label: 'ބޮޑު' }
 	];
 
-	const byokProviders = [AI_PROVIDERS.google, AI_PROVIDERS.openai, AI_PROVIDERS.anthropic];
+	const byokProviders = [AI_PROVIDERS.google];
 </script>
 
 <div class="flex-1 overflow-y-auto" dir="rtl">

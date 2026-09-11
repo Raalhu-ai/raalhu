@@ -81,8 +81,8 @@ export async function fetchQuota(): Promise<QuotaModel[]> {
 	const data = await res.json();
 	if (!res.ok) throw new ApiError(data.error || 'Failed to fetch quota', res.status, data.code, data.actionUrl, data.retryAfterMs);
 	const buckets: QuotaModel[] = data.buckets || data.userQuota?.perModelQuotas || data.perModelQuotas || [];
-	// Filter out _vertex duplicates
-	return buckets.filter((b) => !b.modelId?.endsWith('_vertex'));
+	// Keep the picker Gemini-only, including when connected to an older server.
+	return buckets.filter((b) => typeof b.modelId === 'string' && /^gemini-[a-z0-9][a-z0-9.-]*$/.test(b.modelId));
 }
 
 export async function logout(): Promise<void> {

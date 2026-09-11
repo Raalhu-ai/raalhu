@@ -6,7 +6,7 @@
 export type AccountType = 'unknown' | 'consumer' | 'enterprise' | 'paygo';
 
 export interface SessionData {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	authProvider: 'antigravity';
 	accountType: AccountType;
 	accessToken: string;
@@ -23,7 +23,7 @@ export interface SessionData {
 export function isCurrentSession(value: unknown): value is SessionData {
 	if (!value || typeof value !== 'object') return false;
 	const session = value as Partial<SessionData>;
-	return session.schemaVersion === 2 && session.authProvider === 'antigravity';
+	return session.schemaVersion === 3 && session.authProvider === 'antigravity';
 }
 
 const COOKIE_NAME = 'session';

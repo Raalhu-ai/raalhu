@@ -448,13 +448,13 @@
 								transition-colors duration-200 active:scale-95"
 						>
 							<Sparkles class="w-4.5 h-4.5" />
-							<span class="thaana text-[11px] font-medium max-w-[120px] truncate">{modelDisplayName(selectedModel)}</span>
+							<span dir="rtl" lang="dv" class="thaana text-[11px] font-medium max-w-[120px] truncate">{modelDisplayName(selectedModel)}</span>
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content side="top" align="start" class="w-56">
 							<DropdownMenu.RadioGroup bind:value={selectedModel}>
 								{#each models as model}
-									<DropdownMenu.RadioItem value={model} class="thaana gap-3 text-sm">
-										<span class={selectedModel === model ? 'text-foreground font-medium' : ''}>{modelDisplayName(model)}</span>
+									<DropdownMenu.RadioItem value={model} dir="rtl" class="thaana gap-3 text-sm">
+										<span dir="rtl" lang="dv" class="text-right {selectedModel === model ? 'text-foreground font-medium' : ''}">{modelDisplayName(model)}</span>
 										{#if selectedModel === model}
 											<Check class="w-3.5 h-3.5 ms-auto text-primary" />
 										{/if}

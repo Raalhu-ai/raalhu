@@ -48,6 +48,9 @@
 
 		try {
 			await exchangeCode(codeInput, state);
+			sessionStorage.removeItem('oauth_state');
+			sessionStorage.removeItem('oauth_url');
+			codeInput = '';
 			window.location.href = '/';
 		} catch (err: any) {
 			loginError = err.message || 'ކޯޑް ބަލައިގަތުމުގައި މައްސަލައެއް ދިމާވެއްޖެ';
@@ -60,7 +63,7 @@
 	}
 </script>
 
-<div class="h-dvh flex flex-col items-center justify-center px-6 overflow-hidden">
+<div class="min-h-dvh flex flex-col items-center justify-center px-6 py-20">
 
 	<!-- Back to home -->
 	<a
@@ -115,12 +118,22 @@
 					</div>
 				</div>
 
-				<!-- Step 2: Copy code -->
+				<!-- Step 2: Copy the URL even though the loopback page cannot load -->
 				<div class="flex items-start gap-4">
 					<div class="shrink-0 w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center mt-0.5">2</div>
-					<p class="thaana text-base text-foreground">
-						ސައިން އިން ވުމުން ފެންނަ ކޯޑް ކޮޕީ ކުރައްވާ
-					</p>
+					<div class="min-w-0 flex-1">
+						<p class="thaana text-base text-foreground mb-3">
+							ސައިން އިން ވުމަށްފަހު ބްރައުޒަރުގެ އެޑްރެސް ބާރުން ފުރިހަމަ ލިންކު ކޮޕީ ކުރައްވާ
+						</p>
+						<div id="callback-help" class="rounded-lg border border-border/60 bg-card p-3 text-sm text-muted-foreground space-y-3">
+							<p class="thaana leading-relaxed" dir="rtl">
+								ޕޭޖް ނުހުޅުވޭ ކަމަށް އެރަރެއް ފެންނަނީ ނަމަވެސް، އެޑްރެސް ބާރުގައިވާ ފުރިހަމަ ލިންކު ކޮޕީކޮށް މި ޓެބަށް އަނބުރާ އައިސް ތިރީގައި ޕޭސްޓް ކުރައްވާ.
+							</p>
+							<p dir="ltr" lang="en" class="leading-relaxed text-left">
+								After choosing your Google account, you may see <strong class="font-medium text-foreground">“This site can’t be reached”</strong> or “localhost refused to connect”. This is expected for this sign-in method. Copy the entire URL from that page’s address bar, return to this tab, and paste it below. You don’t need to reload the error page.
+							</p>
+						</div>
+					</div>
 				</div>
 
 				<!-- Step 3: Paste code -->
@@ -128,16 +141,20 @@
 					<div class="flex items-start gap-4 mb-3">
 						<div class="shrink-0 w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center mt-0.5">3</div>
 						<p class="thaana text-base text-foreground">
-							ކޯޑް ތިރީގައި ޕޭސްޓް ކުރައްވާ
+							ފުރިހަމަ ލިންކު ތިރީގައި ޕޭސްޓް ކުރައްވާ
 						</p>
 					</div>
 					<div class="relative" dir="ltr">
 						<ClipboardPaste class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40" />
 						<input
 							type="text"
+							autocomplete="off"
+							spellcheck={false}
+							aria-label="Google callback URL"
+							aria-describedby="callback-help"
 							bind:value={codeInput}
 							onkeydown={handleCodeKeydown}
-							placeholder="ކޯޑް މިތާ ޕޭސްޓް ކުރައްވާ"
+							placeholder="http://localhost:51121/oauth-callback?…"
 							class="w-full pl-10 pr-4 h-12 bg-background border border-border/60 rounded-xl
 								text-foreground font-mono text-base placeholder:text-muted-foreground/40 placeholder:font-[var(--font-thaana)] placeholder:text-sm
 								focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30"

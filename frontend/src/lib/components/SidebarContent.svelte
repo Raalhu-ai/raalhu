@@ -382,7 +382,7 @@
 							{@const isSelected = q.modelId === selectedModel}
 							<div class="text-xs {isSelected ? 'opacity-100' : 'opacity-70'}">
 								<div class="flex justify-between mb-0.5 text-muted-foreground">
-									<span class="thaana truncate text-[11px] {isSelected ? 'text-foreground font-medium' : ''}">
+									<span dir="rtl" lang="dv" class="thaana truncate text-[11px] {isSelected ? 'text-foreground font-medium' : ''}">
 										{modelDisplayName(q.modelId || 'unknown')}
 									</span>
 									<span class="tabular-nums text-[11px] shrink-0 ms-2">{Math.round(pct)}%</span>
