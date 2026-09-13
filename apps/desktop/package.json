@@ -50,6 +50,7 @@
       }
     ],
     "electronVersion": "33.4.11",
+    "npmRebuild": false,
     "asarUnpack": [
       "**/*.node"
     ],
