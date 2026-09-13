@@ -238,15 +238,20 @@ const MAX_ATTEMPTS = 10;
 const INITIAL_DELAY_MS = 5000;
 const MAX_DELAY_MS = 30000;
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+	signal?.throwIfAborted();
+	return new Promise((resolve, reject) => {
+		const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(signal?.reason); };
+		const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
+		signal?.addEventListener('abort', abort, { once: true });
+	});
 }
 
 /**
  * Fetch with retry and exponential backoff.
  * Prepends configured API base URL and injects auth headers automatically.
  */
-export async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, fetcher: typeof fetch = fetch, shouldRetry?: (response: Response) => boolean): Promise<Response> {
 	let currentDelay = INITIAL_DELAY_MS;
 
 	// Prepend API base URL and inject auth headers
@@ -258,9 +263,11 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
 	};
 
 	for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-		const res = await fetch(fullUrl, { ...init, headers: mergedHeaders });
+		init.signal?.throwIfAborted();
+		const res = await fetcher(fullUrl, { ...init, headers: mergedHeaders });
 
 		if (res.ok) return res;
+		if (res.status !== 401 && shouldRetry?.(res) === false) return res;
 
 		const errText = await res.text();
 		if (res.status === 401) {
@@ -294,7 +301,7 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
 				const delayWithJitter = currentDelay + jitter;
 
 				console.warn(`[Retry] Attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}. Retrying in ${Math.round(delayWithJitter)}ms...`);
-				await sleep(delayWithJitter);
+				await sleep(delayWithJitter, init.signal);
 				currentDelay = Math.min(MAX_DELAY_MS, currentDelay * 2);
 				continue;
 			}
@@ -309,7 +316,7 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
 			const delayWithJitter = Math.max(0, currentDelay + jitter);
 
 			console.warn(`[Retry] Attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}. Retrying in ${Math.round(delayWithJitter)}ms...`);
-			await sleep(delayWithJitter);
+			await sleep(delayWithJitter, init.signal);
 			currentDelay = Math.min(MAX_DELAY_MS, currentDelay * 2);
 			continue;
 		}

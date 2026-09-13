@@ -7,6 +7,7 @@
       "@raalhu/ui": ["../../packages/ui/src"],
       "@raalhu/ui/*": ["../../packages/ui/src/*"],
       "@raalhu/shared": ["../../packages/shared/src"],
+      "@raalhu/shared/src/*": ["../../packages/shared/src/*"],
       "@raalhu/shared/*": ["../../packages/shared/src/*"],
       "react-native": ["react-native-web"]
     }

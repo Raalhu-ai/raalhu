@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowRight, EllipsisVertical, Pencil, Trash2, Plus, X } from 'lucide-react';
 import ChatInput, { type ChatInputSendData } from '../ChatInput';
-import type { Project, ProjectFile, ChatSession } from '@raalhu/shared';
+import { MemoryEditor } from './MemoryEditor';
+import type { Project } from '../storage';
+import type { ChatSession } from '@raalhu/shared/src/types';
+import { formatRelativeTime } from '../storage';
 import {
 	getProject,
 	updateProjectInstructions,
+	updateProjectMemory,
 	renameProject,
 	deleteProject,
 	addFileToProject,
 	removeFileFromProject,
 	getProjectSessions,
 	totalFileSizeBytes,
-	formatRelativeTime,
-} from '@raalhu/shared';
+	registerStorageFlush,
+} from '../storage';
 
 interface ProjectViewProps {
 	projectId: string;
@@ -49,6 +53,7 @@ export function ProjectView({
 	const [renameValue, setRenameValue] = useState('');
 	const [editingInstructions, setEditingInstructions] = useState(false);
 	const [showMenu, setShowMenu] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const loadProject = useCallback(async () => {
@@ -72,6 +77,10 @@ export function ProjectView({
 			await updateProjectInstructions(projectId, value);
 		}, 800);
 	}, [projectId]);
+	useEffect(() => registerStorageFlush(async () => {
+		if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+		if (project && instructions !== project.instructions) await updateProjectInstructions(projectId, instructions);
+	}), [project, projectId, instructions]);
 
 	const startRename = useCallback(() => {
 		setRenameValue(project?.name ?? '');
@@ -96,19 +105,9 @@ export function ProjectView({
 
 	const triggerFileUpload = useCallback(async () => {
 		try {
-			const handles = await (window as any).showOpenFilePicker({ multiple: true });
-			for (const handle of handles) {
-				const file = await handle.getFile();
-				const pf: ProjectFile = {
-					id: crypto.randomUUID(),
-					name: file.name,
-					mimeType: file.type || 'application/octet-stream',
-					size: file.size,
-					handle,
-					addedAt: Date.now()
-				};
-				await addFileToProject(projectId, pf);
-			}
+			const files = Array.from(fileInputRef.current?.files || []);
+			for (const file of files) await addFileToProject(projectId, file);
+			if (fileInputRef.current) fileInputRef.current.value = "";
 			await loadProject();
 		} catch (err: any) {
 			if (err.name !== 'AbortError') {
@@ -134,6 +133,7 @@ export function ProjectView({
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden" dir="rtl">
+            <input ref={fileInputRef} type="file" multiple hidden onChange={triggerFileUpload} />
 			<div className="flex-1 overflow-y-auto">
 				<div className="max-w-6xl mx-auto px-6 ps-14 lg:ps-6 py-8">
 					{/* Back link */}
@@ -246,6 +246,15 @@ export function ProjectView({
 						{/* Right column */}
 						<div className="w-full lg:w-96 shrink-0 border border-border rounded-2xl flex flex-col lg:mt-4">
 							{/* Instructions */}
+              <div className="px-5 py-4 border-b border-border">
+                <MemoryEditor
+                  key={projectId}
+                  label="ޕްރޮޖެކްޓް ހަނދާންތައް · Project memory"
+                  description="Saved notes are included only in chats belonging to this project, alongside your global memory."
+                  initialValue={project.memory || ''}
+                  onSave={memory => updateProjectMemory(projectId, memory)}
+                />
+              </div>
 							<div className="px-5 py-4 mt-1">
 								<div className="flex flex-col gap-0.5">
 									<div className="h-6 flex items-center justify-between gap-4">
@@ -304,7 +313,7 @@ export function ProjectView({
 								<div className="h-6 flex items-center justify-between gap-4">
 									<h3 className="thaana text-sm font-semibold text-foreground">ފައިލްތައް</h3>
 									<button
-										onClick={triggerFileUpload}
+										onClick={() => fileInputRef.current?.click()}
 										className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors -me-2"
 									>
 										<Plus className="w-3.5 h-3.5" />
@@ -316,7 +325,7 @@ export function ProjectView({
 										{project.files.map(file => (
 											<div key={file.id} className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg group/file">
 												<div className="flex-1 min-w-0">
-													<span className="text-sm text-foreground truncate block">{file.name}</span>
+													<span className="text-sm text-foreground truncate block">{file.name}{file.missing ? " (add file again)" : ""}</span>
 													<span className="text-[10px] text-muted-foreground">{formatFileSize(file.size)}</span>
 												</div>
 												<button

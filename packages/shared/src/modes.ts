@@ -24,6 +24,25 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
 	'gemini-3-pro-preview': 'ޖެމިނީ 3 ޕްރޯ ޕްރީވިއު',
 };
 
+// Compose labels so new Gemini versions keep the same Dhivehi naming style.
+const MODEL_NAME_PARTS: Record<string, string> = {
+	gemini: 'ޖެމިނީ',
+	flash: 'ފްލޭޝް',
+	pro: 'ޕްރޯ',
+	lite: 'ލައިޓް',
+	preview: 'ޕްރީވިއު',
+	agent: 'އޭޖެންޓް',
+	thinking: 'ތިންކިންގް',
+	image: 'އިމޭޖް',
+	high: 'ހައި',
+	medium: 'މީޑިއަމް',
+	low: 'ލޯ',
+	extra: 'އެކްސްޓްރާ',
+	tiered: 'ޓިއަރޑް',
+};
+
 export function modelDisplayName(modelId: string): string {
-	return MODEL_DISPLAY_NAMES[modelId] ?? modelId;
+	if (MODEL_DISPLAY_NAMES[modelId]) return MODEL_DISPLAY_NAMES[modelId];
+	if (!modelId.startsWith('gemini-')) return modelId;
+	return modelId.split('-').map((part) => MODEL_NAME_PARTS[part] ?? part).join(' ');
 }

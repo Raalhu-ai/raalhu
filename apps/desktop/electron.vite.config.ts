@@ -6,8 +6,9 @@ export default defineConfig({
   main: {
     build: {
       outDir: "dist/main",
+      rollupOptions: { external: ["better-sqlite3"], output: { entryFileNames: "[name].js" } },
       lib: {
-        entry: "src/main.ts",
+        entry: { main: "src/main.ts", "storage-worker": "src/storage/worker.ts" },
       },
     },
   },
@@ -28,6 +29,7 @@ export default defineConfig({
         "@": path.resolve(__dirname, "src/renderer"),
         "@raalhu/shared/src/agent": path.resolve(__dirname, "../../packages/shared/src/agent"),
         "@raalhu/shared/src/api-core": path.resolve(__dirname, "../../packages/shared/src/api-core"),
+        "@raalhu/shared/src": path.resolve(__dirname, "../../packages/shared/src"),
         "@raalhu/shared": path.resolve(__dirname, "../../packages/shared/src"),
         "@raalhu/ui": path.resolve(__dirname, "../../packages/ui/src"),
         "react-native": path.resolve(__dirname, "node_modules/react-native-web"),
@@ -37,7 +39,7 @@ export default defineConfig({
       postcss: path.resolve(__dirname),
     },
     build: {
-      outDir: "../../dist/renderer",
+      outDir: path.resolve(__dirname, "dist/renderer"),
     },
   },
 });

@@ -2,6 +2,7 @@ export interface Settings {
   theme: 'light' | 'dark' | 'system';
   fontSize: 'small' | 'medium' | 'large';
   customInstructions: string;
+  memories: string;
 }
 
 const STORAGE_KEY = 'mogger_settings';
@@ -9,7 +10,8 @@ const STORAGE_KEY = 'mogger_settings';
 const DEFAULTS: Settings = {
   theme: 'dark',
   fontSize: 'medium',
-  customInstructions: ''
+  customInstructions: '',
+  memories: ''
 };
 
 const FONT_SIZES: Record<Settings['fontSize'], string> = {

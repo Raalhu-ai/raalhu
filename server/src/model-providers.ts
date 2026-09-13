@@ -1,5 +1,6 @@
+import { googleFailure } from './byok-failure';
 import { createGoogle } from '@ai-sdk/google';
-import { generateText, jsonSchema, streamText, type ModelMessage } from 'ai';
+import { generateText, jsonSchema, streamText, type ModelMessage, type AssistantModelMessage, type UserModelMessage, type ToolModelMessage } from 'ai';
 import type { SessionData } from './session';
 import { proxyAntigravity, type RefreshSession } from './antigravity';
 
@@ -104,14 +105,70 @@ function systemText(systemInstruction: unknown): string | undefined {
 	return text || undefined;
 }
 
-function toModelMessages(contents: GeminiRequestBody['contents']): ModelMessage[] {
-	return contents.map((content) => {
-		const text = textFromParts(content.parts);
+/** Gemini clients may omit call IDs. Match those results by name in call order. */
+export function toModelMessages(contents: GeminiRequestBody['contents']): ModelMessage[] {
+	const messages: ModelMessage[] = [];
+	const pending: Array<{ id: string; name: string }> = [];
+	const reserved = new Set(contents.flatMap(c => c.parts.flatMap(p =>
+		typeof p.functionCall?.id === 'string' ? [p.functionCall.id] : [])));
+	let sequence = 0;
+	const newId = () => {
+		let id: string;
+		do { id = `gemini-call-${sequence++}`; } while (reserved.has(id));
+		reserved.add(id);
+		return id;
+	};
+	for (const content of contents) {
 		if (content.role === 'model') {
-			return { role: 'assistant', content: text } as ModelMessage;
+			const parts: AssistantModelMessage['content'] = [];
+			for (const part of content.parts) {
+				const providerOptions = typeof part.thoughtSignature === 'string'
+					? { google: { thoughtSignature: part.thoughtSignature } } : undefined;
+				if (part.functionCall) {
+					const call = part.functionCall;
+					const id = typeof call.id === 'string' ? call.id : newId();
+					pending.push({ id, name: call.name });
+					parts.push({ type: 'tool-call', toolCallId: id, toolName: call.name,
+						input: call.args ?? {}, providerOptions });
+				} else if (typeof part.text === 'string') {
+					parts.push({ type: part.thought ? 'reasoning' : 'text', text: part.text, providerOptions });
+				}
+			}
+			if (parts.length) messages.push({ role: 'assistant', content: parts });
+			continue;
 		}
-		return { role: 'user', content: text } as ModelMessage;
-	});
+		// Tool results require their own SDK role; keep interleaved user text in order.
+		let userParts: Exclude<UserModelMessage['content'], string> = [];
+		let toolParts: ToolModelMessage['content'] = [];
+		const flushUser = () => {
+			if (userParts.length) messages.push({ role: 'user', content: userParts });
+			userParts = [];
+		};
+		const flushTools = () => {
+			if (toolParts.length) messages.push({ role: 'tool', content: toolParts });
+			toolParts = [];
+		};
+		for (const part of content.parts) {
+			if (part.functionResponse) {
+				flushUser();
+				const result = part.functionResponse;
+				const index = pending.findIndex(call => call.name === result.name &&
+					(typeof result.id !== 'string' || call.id === result.id));
+				if (index < 0) throw new Error('Tool result has no matching function call.');
+				const [call] = pending.splice(index, 1);
+				toolParts.push({ type: 'tool-result', toolCallId: call.id, toolName: call.name,
+					output: { type: 'json', value: result.response ?? {} } });
+			} else {
+				flushTools();
+				if (typeof part.text === 'string') userParts.push({ type: 'text', text: part.text });
+				else if (part.inlineData) userParts.push({ type: 'file',
+					data: part.inlineData.data, mediaType: part.inlineData.mimeType });
+			}
+		}
+		flushUser();
+		flushTools();
+	}
+	return messages;
 }
 
 function buildGoogleTools(googleProvider: ReturnType<typeof createGoogle>, tools: unknown): Record<string, any> | undefined {
@@ -209,6 +266,8 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 	const googleProvider = getGoogleProvider(route);
 	const tools = buildGoogleTools(googleProvider, body.tools);
 	const result = streamText({
+		// fullStream errors are sanitized below; avoid SDK logging raw provider bodies.
+		onError: () => {},
 		model: googleProvider(model),
 		messages: toModelMessages(body.contents),
 		system: systemText(body.systemInstruction),
@@ -228,6 +287,8 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 			const emittedToolCalls = new Set<string>();
 			try {
 				for await (const chunk of result.fullStream) {
+					if (chunk.type === 'error') throw chunk.error;
+					if (chunk.type === 'abort') throw new DOMException('Request cancelled', 'AbortError');
 					if (chunk.type === 'text-delta' && chunk.text) {
 						controller.enqueue(
 							encoder.encode(
@@ -299,8 +360,8 @@ async function streamWithAiSdk(route: ModelRoute, body: GeminiRequestBody): Prom
 				controller.enqueue(encoder.encode('data: [DONE]\n\n'));
 				controller.close();
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
+				const failure = googleFailure(err);
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify(failure)}\n\n`));
 				controller.enqueue(encoder.encode('data: [DONE]\n\n'));
 				controller.close();
 			}
@@ -327,7 +388,7 @@ export async function generateModel(
 			});
 		} catch (err) {
 			return new Response(
-				JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+				JSON.stringify(googleFailure(err)),
 				{
 					status: 502,
 					headers: { 'Content-Type': 'application/json' }
@@ -358,7 +419,7 @@ export async function streamModel(
 			});
 		} catch (err) {
 			return new Response(
-				JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+				JSON.stringify(googleFailure(err)),
 				{
 					status: 502,
 					headers: { 'Content-Type': 'application/json' }

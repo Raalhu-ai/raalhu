@@ -1,3 +1,4 @@
+import { byokFailureKind } from '../byok-failure';
 import type { PyodideSandbox } from './sandbox';
 import type { AgentEvent, GeminiContent, UserInputQuestion, MessageComposeData, RecipeData, WidgetData } from './types';
 import { AGENT_TOOLS } from './tools';
@@ -26,36 +27,38 @@ interface TurnAccumulator {
 	functionCalls: { name: string; args: Record<string, unknown> }[];
 	textContent: string;
 	streamError?: string;
+	streamFailure?: unknown;
 }
 
 /**
  * Parse a Gemini SSE response body line-by-line, yielding parsed JSON chunks.
  */
 async function* parseSSEStream(response: Response): AsyncGenerator<any> {
-	const reader = response.body!.getReader();
+	if (!response.body) throw new Error('The server returned an empty response. Please try again.');
+	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = '';
 
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
+			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
 			const lines = buffer.split('\n');
-			buffer = lines.pop()!; // Keep incomplete line in buffer
+			buffer = done ? '' : lines.pop()!;
 
 			for (const line of lines) {
-				if (!line.startsWith('data: ')) continue;
-				const jsonStr = line.slice(6).trim();
+				if (!line.startsWith('data:')) continue;
+				const jsonStr = line.slice(5).trim();
+				if (!jsonStr) continue;
 				if (jsonStr === '[DONE]') return;
 
 				try {
 					yield JSON.parse(jsonStr);
 				} catch {
-					// Skip malformed JSON
+					throw new Error('The server returned an unreadable response. Please try again.');
 				}
 			}
+			if (done) break;
 		}
 	} finally {
 		reader.releaseLock();
@@ -70,13 +73,23 @@ async function* streamGeminiTurn(
 	acc: TurnAccumulator
 ): AsyncGenerator<AgentEvent> {
 	for await (const chunk of parseSSEStream(response)) {
-		if (chunk?.error) {
-			acc.streamError = `Gemini API error: ${chunk.error}`;
+		const error = chunk?.error || chunk?.response?.error;
+		if (error) {
+			acc.streamFailure = chunk?.error ? chunk : chunk.response;
+			acc.streamError = `Gemini API error: ${typeof error === 'string' ? error : error.message || JSON.stringify(error)}`;
 			return;
 		}
 
 		const candidate = chunk?.candidates?.[0] || chunk?.response?.candidates?.[0];
+		const blockReason = (chunk?.promptFeedback || chunk?.response?.promptFeedback)?.blockReason;
+		if (blockReason) {
+			acc.streamError = `The model blocked this request (${blockReason}). Please revise your message.`;
+			return;
+		}
 		if (!candidate) continue;
+		if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+			acc.streamError = `The model stopped before completing its response (${candidate.finishReason}). Please try again or choose another model.`;
+		}
 
 		const parts = candidate.content?.parts || [];
 
@@ -145,13 +158,13 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			toolCount: AGENT_TOOLS[0]?.functionDeclarations?.length
 		});
 
-		async function requestTurnStream(): Promise<Response> {
+		async function requestTurnStream(proxyFallback = false): Promise<Response> {
 			const t0 = performance.now();
 			const response = await fetchWithModelFallback('/api/stream', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(reqBody)
-			}, model, fetchWithRetry);
+			}, model, fetchWithRetry, proxyFallback);
 			console.log(`[AgentLoop] Response status=${response.status} (${(performance.now() - t0).toFixed(0)}ms)`);
 
 			if (!response.ok) {
@@ -174,8 +187,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			response = await requestTurnStream();
 		} catch (err: any) {
 			if (err instanceof TerminalQuotaError) {
-				// Daily quota exhausted — don't show an API error, just stop silently.
-				// The processing animation will end naturally.
+				yield { type: 'error', message: `${err.message} Try another model or wait for your quota to reset.` };
 				console.error(`[AgentLoop] Terminal quota error:`, err.message);
 				return;
 			}
@@ -195,25 +207,30 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			yield event;
 		}
 
+		if (acc.streamFailure && response.headers.get('X-Resolved-Model-Module') === 'ai-sdk') {
+			markProviderKeyFailed(response.headers.get('X-Resolved-AI-Provider') as AiProvider, acc.streamFailure);
+		}
 		if (
-			acc.streamError &&
+			acc.streamError && acc.streamFailure && byokFailureKind(acc.streamFailure) !== 'cancelled' &&
 			response.headers.get('X-Resolved-Model-Module') === 'ai-sdk' &&
 			response.headers.get('X-Resolved-AI-Provider') &&
 			acc.rawParts.length === 0 &&
 			acc.functionCalls.length === 0 &&
 			acc.textContent.length === 0
 		) {
-			const provider = response.headers.get('X-Resolved-AI-Provider') as AiProvider;
 			console.warn(`[AgentLoop] BYOK stream failed before content; retrying through proxy: ${acc.streamError}`);
-			markProviderKeyFailed(provider, acc.streamError);
 			try {
-				response = await requestTurnStream();
+				response = await requestTurnStream(true);
+				acc.streamFailure = undefined;
 				acc.streamError = undefined;
 				for await (const event of streamGeminiTurn(response, acc)) {
 					yield event;
 				}
 			} catch (err: any) {
-				if (err instanceof TerminalQuotaError) return;
+				if (err instanceof TerminalQuotaError) {
+					yield { type: 'error', message: `${err.message} Try another model or wait for your quota to reset.` };
+					return;
+				}
 				yield { type: 'error', message: err.message?.startsWith('API error') ? err.message : `Network error: ${err.message}` };
 				return;
 			}
@@ -375,6 +392,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 			});
 		} else {
 			console.warn(`[AgentLoop] No text and no function calls in response`);
+			yield { type: 'error', message: 'The model returned no answer. Please try again or choose another model.' };
 		}
 
 		console.log(`[AgentLoop] Loop complete after ${turn + 1} turn(s)`);

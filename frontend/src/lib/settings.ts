@@ -5,6 +5,8 @@ export interface Settings {
 	memories: string;
 	byokKeys: Record<AiProvider, string>;
 	byokKeyStatus: Record<AiProvider, ByokKeyStatus>;
+	// Explicit user choice, independent of the route used by a request or fallback.
+	preferredModelModule: ModelModule;
 	activeModelModule: ModelModule;
 	activeAiProvider: AiProvider | '';
 	lastByokError: string;
@@ -35,6 +37,7 @@ const DEFAULTS: Settings = {
 	memories: '',
 	byokKeys: { ...DEFAULT_BYOK_KEYS },
 	byokKeyStatus: { ...DEFAULT_BYOK_KEY_STATUS },
+	preferredModelModule: 'proxy',
 	activeModelModule: 'proxy',
 	activeAiProvider: '',
 	lastByokError: ''
@@ -156,6 +159,14 @@ function normalizeSettings(value: unknown): Settings {
 		normalized.activeModelModule = 'proxy';
 		normalized.activeAiProvider = '';
 	}
+
+	// Preserve the previously saved selection when migrating. A valid key alone
+	// is not evidence that the user wants BYOK (they may have selected proxy).
+	normalized.preferredModelModule = isModelModule(parsed.preferredModelModule)
+		? parsed.preferredModelModule
+		: isModelModule(parsed.activeModelModule)
+			? parsed.activeModelModule
+			: parsed.modelProvider === 'gemini-api' ? 'ai-sdk' : 'proxy';
 
 	if (typeof parsed.lastByokError === 'string') normalized.lastByokError = parsed.lastByokError;
 

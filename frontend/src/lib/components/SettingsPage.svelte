@@ -34,6 +34,7 @@
 		AI_PROVIDERS,
 		clearProviderKey,
 		setProviderKey,
+		setModelProvider,
 		switchToProxy,
 		validateProviderKey
 	} from '$lib/gemini-api';
@@ -243,6 +244,11 @@
 
 	function useProxy() {
 		switchToProxy();
+		settings = loadSettings();
+	}
+
+	function useByok() {
+		setModelProvider('ai-sdk');
 		settings = loadSettings();
 	}
 
@@ -817,7 +823,7 @@
 						<section>
 							<h2 class="thaana-heading text-2xl font-semibold tracking-normal text-foreground">އަމިއްލަ ކީތައް</h2>
 							<p class="thaana mt-2 max-w-3xl text-sm text-muted-foreground">
-								ޖެމިނީ API ކީ ސޭވް ކުރެވޭނީ މި ބްރައުޒަރގައި އެކަނިއެވެ. ކީ އެއް ސޭވް ކުރެވިފައި އޮތްނަމަ، ވޮއިސް ނޫން މޮޑެލް ރިކުއެސްޓްތައް SDK މަގުން ހިނގާނެ.
+								ޖެމިނީ API ކީ ސޭވް ކުރެވޭނީ މި ބްރައުޒަރގައި އެކަނިއެވެ. ކީ ސޭވްކޮށް ޓެސްޓް ކުރުމަށްފަހު، އަމިއްލަ ކީ ބޭނުންކުރަން ހޮވާ. ޕްރޮކްސީ ހޮވާފައި އޮތްނަމަ، ކީ ޓެސްޓް ކުރުމުން އެ ޚިޔާރު ބަދަލެއް ނުވާނެ.
 							</p>
 
 							<div class="mt-6 rounded-[24px] border border-border/70 bg-card/40">
@@ -921,6 +927,7 @@
 													<button
 														disabled={!provider.enabled}
 														onclick={useProxy}
+                                                        aria-pressed={settings.preferredModelModule === 'proxy'}
 														class="rounded-xl border border-border/70 px-4 py-2.5 text-sm transition-colors duration-150
 															{provider.enabled
 																? 'text-foreground hover:bg-accent'
@@ -928,6 +935,14 @@
 													>
 														<span class="thaana">ޕްރޮކްސީ ބޭނުންކުރޭ</span>
 													</button>
+                                                    <button
+                                                        disabled={!provider.enabled || providerStatus !== 'valid' || !settings.byokKeys[provider.id]}
+                                                        onclick={useByok}
+                                                        aria-pressed={settings.preferredModelModule === 'ai-sdk'}
+                                                        class="rounded-xl border border-border/70 px-4 py-2.5 text-sm text-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                                                    >
+                                                        <span class="thaana">އަމިއްލަ ކީ ބޭނުންކުރޭ</span>
+                                                    </button>
 													<button
 														disabled={!provider.enabled}
 														onclick={() => clearKey(provider.id)}

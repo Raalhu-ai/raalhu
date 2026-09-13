@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { inspirationCards, type InspirationCard } from '@raalhu/shared';
-import { db } from '@raalhu/shared';
+import { inspirationCards } from '@raalhu/shared/src/inspiration-cards';
+import type { InspirationCard } from '@raalhu/shared/src/types';
+import { storage } from '../storage';
 
 type Tab = 'inspiration' | 'artifacts';
 type Category = 'all' | 'learn' | 'tips' | 'game' | 'creative' | 'relax';
@@ -37,36 +38,7 @@ export function ArtifactsGallery({ onBack, onSelectCard, onOpenSession }: Artifa
 	useEffect(() => {
 		(async () => {
 			try {
-				const sessions = await db.sessions
-					.where('archived').notEqual(1)
-					.toArray();
-
-				const artifacts: UserArtifact[] = [];
-				for (const session of sessions) {
-					if (!session.agentMessages) continue;
-					let messages: any[];
-					try {
-						messages = typeof session.agentMessages === 'string'
-							? JSON.parse(session.agentMessages)
-							: session.agentMessages;
-					} catch { continue; }
-
-					for (const msg of messages) {
-						if (!msg.steps) continue;
-						for (const step of msg.steps) {
-							if (step.kind === 'artifact') {
-								artifacts.push({
-									filename: step.filename || 'file',
-									label: step.label || step.filename || 'Artifact',
-									mimeType: step.mimeType || '',
-									sessionId: session.id,
-									sessionTitle: session.title || 'ޗެޓް',
-								});
-							}
-						}
-					}
-				}
-				setUserArtifacts(artifacts);
+				setUserArtifacts(await storage().listArtifacts());
 			} catch (err) {
 				console.error('[ArtifactsGallery] Failed to load artifacts:', err);
 			}

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { englishToThaana } from "@raalhu/shared/src/transliterate";
 import type { UIMessage } from "ai";
-import type { Project } from "@raalhu/shared";
+import type { Project } from "./storage";
 import LandingPage from "./LandingPage";
 import LoginPage from "./LoginPage";
 import Dashboard from "./Dashboard";
@@ -16,10 +17,14 @@ import { applyFontSize, applyTheme } from "./settings";
 import { PanelLeft, Plus, Waves, Loader2 } from "lucide-react";
 import { configureAgent } from "./agent/retry";
 import {
-  listSessions, createSession, loadAgentMessages,
+  listSessions, createSession, loadAgentMessages, flushDesktopStorage,
   renameSession, archiveSession, updateSessionTitle,
   listProjects, createProject as createProjectInDb,
-} from "@raalhu/shared";
+} from "./storage";
+
+import type { ByokStatus } from '../byok-types';
+import { startMemoryJob } from './memory-job';
+import { isByokReady, providerModels, compatibleModel, prepareProviderSession } from './provider-session';
 
 type AppState = "loading" | "landing" | "login" | "setup" | "dashboard" | "chat" | "settings" | "projects" | "project-view" | "artifacts";
 type NavTab = "chat" | "projects" | "artifacts";
@@ -28,13 +33,27 @@ export default function App() {
   const [state, setState] = useState<AppState>("loading");
   const [user, setUser] = useState<User | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-3-flash-preview");
+  const memoryModelRef = useRef(selectedModel);
+  memoryModelRef.current = selectedModel;
+  const memoryReady = !!user && !['loading', 'landing', 'login', 'setup'].includes(state);
+  useEffect(() => {
+    if (memoryReady) return startMemoryJob(() => memoryModelRef.current);
+  }, [memoryReady]);
+  const [byokStatus, setByokStatus] = useState<ByokStatus | null>(null);
+  const usingByok = isByokReady(byokStatus);
+  const providerRef = useRef(false);
+  providerRef.current = usingByok;
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
+  const authEpoch = useRef(0);
+  const quotaEpoch = useRef(0);
   const [quotas, setQuotas] = useState<QuotaModel[]>([]);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     localStorage.getItem("mogger_sidebar") === "collapsed"
   );
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => sessionStorage.getItem("mogger_active_session"));
   const [activeTab, setActiveTab] = useState<NavTab>("chat");
   const [setupError, setSetupError] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
@@ -46,7 +65,23 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
-  const models = quotas.map((q) => q.modelId);
+  const showSetupError = useCallback((err: { message?: string }, blocking = true) => {
+    setSetupTosUrl("");
+    const msg = err.message || "Setup failed";
+    if (msg.startsWith("TOS_REQUIRED:")) {
+      setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
+      setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
+    } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+      setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
+      setSetupError("Google requires account verification before Antigravity can be used.");
+    } else {
+      setSetupError(msg);
+    }
+    if (blocking) setState("setup");
+  }, []);
+
+  const models = useMemo(() => providerModels(usingByok, quotas), [usingByok, quotas]);
+  const activeModel = compatibleModel(selectedModel, models);
 
   // Persist active session ID
   useEffect(() => {
@@ -57,29 +92,32 @@ export default function App() {
     }
   }, [activeSessionId]);
 
-  // Keep selectedModel valid
+  // Clamp restored proxy-only IDs before a chat can send its initial request.
   useEffect(() => {
-    if (models.length > 0 && !models.includes(selectedModel)) {
-      const DEFAULT = "gemini-3-flash-preview";
-      setSelectedModel(models.includes(DEFAULT) ? DEFAULT : models[0]);
-    }
-  }, [models, selectedModel]);
+    if ((usingByok || quotas.length > 0) && selectedModel !== activeModel) setSelectedModel(activeModel);
+  }, [selectedModel, activeModel, usingByok, quotas.length]);
 
   const loadQuota = useCallback(async () => {
+    const request = ++quotaEpoch.current;
+    if (providerRef.current || !userRef.current?.project) {
+      setQuotas([]);
+      setQuotaLoading(false);
+      return;
+    }
     setQuotaLoading(true);
     try {
       const q = await fetchQuota();
-      console.log("[Quota] Loaded:", q.length, "models", q.map(m => `${m.modelId}=${Math.round((m.remainingFraction ?? 0) * 100)}%`));
-      setQuotas(q);
-    } catch (err) {
-      console.error("[Quota] Error:", err);
-      setQuotas([]);
+      if (request === quotaEpoch.current && !providerRef.current) setQuotas(q);
+    } catch {
+      if (request === quotaEpoch.current) setQuotas([]);
     } finally {
-      setQuotaLoading(false);
+      if (request === quotaEpoch.current) setQuotaLoading(false);
     }
   }, []);
 
-  // Load sessions from Dexie
+  useEffect(() => { void loadQuota(); }, [usingByok, user?.project, loadQuota]);
+
+  // Load desktop SQLite sessions
   const refreshSessions = useCallback(async () => {
     try {
       const all = await listSessions();
@@ -89,7 +127,7 @@ export default function App() {
     }
   }, []);
 
-  // Load projects from Dexie
+  // Load desktop SQLite projects
   const refreshProjects = useCallback(async () => {
     try {
       const all = await listProjects();
@@ -99,75 +137,132 @@ export default function App() {
     }
   }, []);
 
-  // Init
+  const openRequest = useRef(0);
+  const setupInFlight = useRef<{ epoch: number; request: ReturnType<typeof setupCodeAssist> } | null>(null);
+  const setupProxy = useCallback(() => {
+    const epoch = authEpoch.current;
+    if (setupInFlight.current?.epoch === epoch) return setupInFlight.current.request;
+    const request = setupCodeAssist().finally(() => {
+      if (setupInFlight.current?.request === request) setupInFlight.current = null;
+    });
+    setupInFlight.current = { epoch, request };
+    return request;
+  }, []);
+  const openSession = useCallback(async (id: string) => {
+    const request = ++openRequest.current;
+    try {
+      await flushDesktopStorage();
+      const [saved, all] = await Promise.all([loadAgentMessages(id), listSessions()]);
+      if (request !== openRequest.current) return;
+      const match = all.find(session => session.id === id);
+      if (!match) return;
+      // Mount the new chat only after its messages have loaded. Mounting earlier
+      // would let autosave write the previous conversation into the new session.
+      setChatInitialMessages(saved as UIMessage[]);
+      setChatInitialUserMessage("");
+      setChatTitle(match.title);
+      setSelectedModel(match.model);
+      setActiveSessionId(id);
+      setState(saved.length ? "chat" : "dashboard");
+    } catch (error) {
+      console.error("Could not open conversation:", error);
+      alert("Could not save or open this conversation. Please try again.");
+    }
+  }, []);
+
+  const completeLogin = useCallback(async (u: User | null, restore: boolean, epoch: number) => {
+    const status = await window.platform?.byok.status().catch(() => null) ?? null;
+    if (epoch !== authEpoch.current) return;
+    setByokStatus(status);
+    providerRef.current = isByokReady(status);
+    if (!u) {
+      setUser(null);
+      setState(sessionStorage.getItem("oauth_state") ? "login" : "landing");
+      return;
+    }
+    setUser(u);
+    try {
+      const ready = await prepareProviderSession(u, status, setupProxy);
+      if (epoch !== authEpoch.current || !ready) return;
+      setUser(ready.user);
+      ready.background?.then(updated => {
+        if (epoch === authEpoch.current) setUser(updated);
+      }).catch(error => {
+        if (epoch !== authEpoch.current) return;
+        // Keep BYOK usable even if proxy provisioning needs ToS or is unsupported.
+        showSetupError(error instanceof Error ? error : { message: 'Proxy setup is unavailable.' }, false);
+      });
+      void refreshSessions();
+      void refreshProjects();
+      if (restore) {
+        const id = sessionStorage.getItem('mogger_active_session');
+        if (id) {
+          const [all, saved] = await Promise.all([listSessions(), loadAgentMessages(id)]);
+          if (epoch !== authEpoch.current) return;
+          const match = all.find(session => session.id === id);
+          if (match && saved.length) {
+            setActiveSessionId(id);
+            setChatInitialMessages(saved as UIMessage[]);
+            setChatInitialUserMessage('');
+            setChatTitle(match.title);
+            setSelectedModel(match.model);
+            setState('chat');
+            return;
+          }
+        }
+      }
+      setState('dashboard');
+    } catch (error: any) {
+      if (epoch === authEpoch.current) showSetupError(error, !providerRef.current);
+    }
+  }, [refreshSessions, refreshProjects, showSetupError, setupProxy]);
+
   useEffect(() => {
     applyFontSize();
     applyTheme();
-
-    // Configure agent retry module with API base and auth headers
     configureAgent({
       apiBase: API_BASE,
       getAuthHeaders: authHeaders,
-      onReauthRequired: clearSession,
+      onReauthRequired: () => {
+        authEpoch.current++;
+        openRequest.current++;
+        clearSession();
+        setUser(null);
+        setState('login');
+      },
     });
-
-    fetchMe().then(async (u) => {
-      if (!u) {
-        setState("landing");
-        return;
-      }
-      setUser(u);
-
-      // Setup Code Assist if needed
-      if (!u.project) {
-        try {
-          const result = await setupCodeAssist();
-          setUser({ ...u, project: result.project, tier: result.tier });
-        } catch (err: any) {
-          setState("setup");
-          const msg = err.message || "Setup failed";
-          if (msg.startsWith("TOS_REQUIRED:")) {
-            setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
-            setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
-          } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
-            setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
-            setSetupError("Google requires account verification before Antigravity can be used.");
-          } else {
-            setSetupError(msg);
-          }
-          return;
-        }
-      }
-
-      loadQuota();
-      refreshSessions().then(async () => {
-        // Try to restore previous session
-        const savedId = sessionStorage.getItem("mogger_active_session");
-        if (savedId) {
-          const allSessions = await listSessions();
-          const match = allSessions.find((s) => s.id === savedId);
-          if (match) {
-            const saved = await loadAgentMessages(savedId);
-            if (saved && saved.length > 0) {
-              setActiveSessionId(savedId);
-              setChatInitialMessages(saved as UIMessage[]);
-              setChatInitialUserMessage("");
-              setChatTitle(match.title);
-              setState("chat");
-              return;
-            }
-          }
-        }
-        setState("dashboard");
-      });
-      refreshProjects();
+    const epoch = ++authEpoch.current;
+    fetchMe().then(u => completeLogin(u, true, epoch)).catch(() => {
+      if (epoch === authEpoch.current) setState('login');
     });
-  }, [loadQuota, refreshSessions, refreshProjects]);
+    return () => { authEpoch.current++; };
+  }, [completeLogin]);
+
+  const handleByokChange = useCallback((status: ByokStatus) => {
+    const becameReady = isByokReady(status) && !providerRef.current;
+    providerRef.current = isByokReady(status);
+    setByokStatus(status);
+    const currentUser = userRef.current;
+    if (!becameReady || !currentUser || currentUser.project) return;
+    const epoch = authEpoch.current;
+    void setupProxy().then(result => {
+      if (epoch === authEpoch.current) setUser({ ...currentUser, project: result.project, tier: result.tier });
+    }).catch(error => {
+      if (epoch === authEpoch.current) showSetupError(error instanceof Error ? error : { message: 'Proxy setup is unavailable.' }, false);
+    });
+  }, [setupProxy, showSetupError]);
+
+  // Settings stays accessible so users blocked by proxy setup can configure BYOK.
+  useEffect(() => {
+    if (!user || usingByok || user.project || ['loading', 'settings', 'setup', 'login', 'landing'].includes(state)) return;
+    setState('setup');
+  }, [user, usingByok, state]);
 
   // Keyboard shortcuts from main process
   useEffect(() => {
     if (!window.platform?.onShortcut) return;
     return window.platform.onShortcut((action) => {
+      if (!userRef.current) return;
       if (action === "new-chat") handleNewChat();
       if (action === "settings") setState("settings");
     });
@@ -193,12 +288,16 @@ export default function App() {
   }
 
   async function handleLogout() {
+    authEpoch.current++;
+    openRequest.current++;
+    quotaEpoch.current++;
     await logout();
     setUser(null);
     setState("landing");
   }
 
   function handleNewChat() {
+    openRequest.current++;
     setActiveSessionId(null);
     setChatInitialMessages([]);
     setChatInitialUserMessage("");
@@ -208,28 +307,12 @@ export default function App() {
   }
 
   async function handleSetup() {
+    if (!user) return;
     setSetupLoading(true);
-    setSetupError("");
-    setSetupTosUrl("");
-    try {
-      const result = await setupCodeAssist();
-      setUser((u) => u ? { ...u, project: result.project, tier: result.tier } : u);
-      setState("dashboard");
-      loadQuota();
-    } catch (err: any) {
-      const msg = err.message || "Setup failed";
-      if (msg.startsWith("TOS_REQUIRED:")) {
-        setSetupTosUrl(msg.slice("TOS_REQUIRED:".length));
-        setSetupError("ފުރަތަމަ ޓާރމްސް އޮފް ސާރވިސް ޤަބޫލުކުރައްވާ، ދެން އަލުން މަސައްކަތް ކުރައްވާ.");
-      } else if (msg.startsWith("VERIFICATION_REQUIRED:")) {
-        setSetupTosUrl(msg.slice("VERIFICATION_REQUIRED:".length));
-        setSetupError("Google requires account verification before Antigravity can be used.");
-      } else {
-        setSetupError(msg);
-      }
-    } finally {
-      setSetupLoading(false);
-    }
+    setSetupError('');
+    setSetupTosUrl('');
+    await completeLogin(user, false, authEpoch.current);
+    setSetupLoading(false);
   }
 
   // --- Loading ---
@@ -247,27 +330,15 @@ export default function App() {
   }
 
   // --- Login ---
-  if (state === "login") {
+  if (state === "login" || !user) {
     return (
       <LoginPage
         onBack={() => setState("landing")}
-        onLoginSuccess={() => {
-          fetchMe().then(async (u) => {
-            if (!u) return;
-            setUser(u);
-            if (!u.project) {
-              try {
-                const result = await setupCodeAssist();
-                setUser({ ...u, project: result.project, tier: result.tier });
-              } catch {
-                // Setup can be retried later
-              }
-            }
-            setState("dashboard");
-            loadQuota();
-            refreshSessions();
-            refreshProjects();
-          });
+        onLoginSuccess={async () => {
+          const epoch = ++authEpoch.current;
+          const u = await fetchMe();
+          if (!u) throw new Error('Could not verify your session. Please sign in again.');
+          await completeLogin(u, false, epoch);
         }}
       />
     );
@@ -296,6 +367,9 @@ export default function App() {
               "ރާޅު ސެޓަޕް"
             )}
           </button>
+          <button onClick={() => setState('settings')} className="thaana block mx-auto mt-4 text-sm text-primary underline underline-offset-4">
+            އަމިއްލަ ކީ ސެޓް ކުރޭ
+          </button>
           {setupError && (
             <div className="mt-4 p-3 rounded-lg bg-destructive/15 text-destructive text-sm thaana">
               {setupError}
@@ -320,11 +394,11 @@ export default function App() {
 
   // --- Main app shell (dashboard / settings) with sidebar ---
   return (
-    <div className="h-screen flex overflow-hidden bg-background">
+    <div className="desktop-app-shell h-screen flex overflow-hidden bg-background">
       {/* Desktop sidebar */}
       {sidebarCollapsed ? (
         /* Collapsed sidebar - icon strip */
-        <aside className="flex flex-col items-center py-4 gap-1 w-14 border-e border-border bg-card shrink-0">
+        <aside className="desktop-sidebar desktop-sidebar-collapsed flex flex-col items-center py-4 gap-1 w-14 border-e border-border bg-card shrink-0">
           <button
             onClick={toggleSidebar}
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
@@ -347,31 +421,16 @@ export default function App() {
         </aside>
       ) : (
         /* Expanded sidebar */
-        <aside className="flex flex-col w-[260px] h-full border-e border-border bg-card shrink-0 overflow-hidden">
+        <aside className="desktop-sidebar flex flex-col w-[260px] h-full border-e border-border bg-card shrink-0 overflow-hidden">
           <Sidebar
             user={user}
             sessions={sessions}
             activeSessionId={activeSessionId}
-            quotas={quotas}
-            quotaLoading={quotaLoading}
-            selectedModel={selectedModel}
-            onSelectSession={async (id) => {
-              setActiveSessionId(id);
-              const session = sessions.find((s) => s.id === id);
-              setChatTitle(session?.title || "");
-
-              // Load saved messages
-              const saved = await loadAgentMessages(id);
-              if (saved && saved.length > 0) {
-                setChatInitialMessages(saved as UIMessage[]);
-                setChatInitialUserMessage("");
-                setState("chat");
-              } else {
-                setChatInitialMessages([]);
-                setChatInitialUserMessage("");
-                setState("dashboard");
-              }
-            }}
+            usingByok={usingByok}
+            quotas={usingByok ? [] : quotas}
+            quotaLoading={!usingByok && quotaLoading}
+            selectedModel={activeModel}
+            onSelectSession={openSession}
             onNewChat={handleNewChat}
             onSettings={() => setState("settings")}
             onLogout={handleLogout}
@@ -389,15 +448,18 @@ export default function App() {
                 setState("dashboard");
               }
             }}
-            onRenameSession={(id, title) => {
+            onRenameSession={async (id, title) => {
+              await renameSession(id, title);
               setSessions((prev) =>
                 prev.map((s) => (s.id === id ? { ...s, title } : s))
               );
             }}
-            onArchiveSession={(id) => {
+            onArchiveSession={async (id) => {
+              await archiveSession(id);
               setSessions((prev) => prev.filter((s) => s.id !== id));
               if (activeSessionId === id) {
                 setActiveSessionId(null);
+                setState("dashboard");
               }
             }}
           />
@@ -405,23 +467,21 @@ export default function App() {
       )}
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="desktop-main-content flex flex-1 flex-col overflow-hidden">
         {state === "settings" ? (
           <SettingsPage
             user={user}
             onLogout={handleLogout}
+            onByokChange={handleByokChange}
             onBack={() => setState("dashboard")}
+            onChatsCleared={() => { setSessions([]); setActiveSessionId(null); setChatInitialMessages([]); }}
           />
         ) : state === "chat" && activeSessionId ? (
             <AgentChat
               key={activeSessionId}
-              model={selectedModel}
+              model={activeModel}
               onModelChange={setSelectedModel}
-              models={models.length > 0 ? models : [
-                "gemini-3-flash-preview",
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-              ]}
+              models={models}
               quotaExhausted={false}
               sessionId={activeSessionId}
               initialMessages={chatInitialMessages}
@@ -463,10 +523,10 @@ export default function App() {
               }}
               onStartChat={async (text) => {
                 const sessionId = crypto.randomUUID();
-                const shortTitle = text.slice(0, 50) || "ޗެޓް";
+                const shortTitle = englishToThaana(text.slice(0, 50)) || "ޗެޓް";
                 await createSession({
                   id: sessionId,
-                  model: selectedModel,
+                  model: activeModel,
                   projectId: activeProjectId,
                   messages: [{ id: crypto.randomUUID(), role: "user", content: text }],
                 });
@@ -477,22 +537,10 @@ export default function App() {
                 setChatTitle(shortTitle);
                 setState("chat");
               }}
-              onOpenSession={async (id) => {
-                setActiveSessionId(id);
-                const saved = await loadAgentMessages(id);
-                if (saved && saved.length > 0) {
-                  setChatInitialMessages(saved as UIMessage[]);
-                  setChatInitialUserMessage("");
-                  setState("chat");
-                }
-              }}
-              selectedModel={selectedModel}
+              onOpenSession={openSession}
+              selectedModel={activeModel}
               onModelChange={setSelectedModel}
-              models={models.length > 0 ? models : [
-                "gemini-3-flash-preview",
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-              ]}
+              models={models}
               onRefreshProjects={refreshProjects}
             />
         ) : state === "artifacts" ? (
@@ -500,10 +548,10 @@ export default function App() {
               onBack={() => setState("dashboard")}
               onSelectCard={async (prompt) => {
                 const sessionId = crypto.randomUUID();
-                const shortTitle = prompt.slice(0, 50) || "ޗެޓް";
+                const shortTitle = englishToThaana(prompt.slice(0, 50)) || "ޗެޓް";
                 await createSession({
                   id: sessionId,
-                  model: selectedModel,
+                  model: activeModel,
                   messages: [{ id: crypto.randomUUID(), role: "user", content: prompt }],
                 });
                 setSessions((prev) => [{ id: sessionId, title: shortTitle }, ...prev]);
@@ -513,27 +561,19 @@ export default function App() {
                 setChatTitle(shortTitle);
                 setState("chat");
               }}
-              onOpenSession={async (id) => {
-                setActiveSessionId(id);
-                const saved = await loadAgentMessages(id);
-                if (saved && saved.length > 0) {
-                  setChatInitialMessages(saved as UIMessage[]);
-                  setChatInitialUserMessage("");
-                  setState("chat");
-                }
-              }}
+              onOpenSession={openSession}
             />
         ) : (
             <Dashboard
               userName={user?.name ?? ""}
               onSendMessage={async (text) => {
                 const sessionId = crypto.randomUUID();
-                const shortTitle = text.slice(0, 50) || "ޗެޓް";
+                const shortTitle = englishToThaana(text.slice(0, 50)) || "ޗެޓް";
 
-                // Create session in Dexie
+                // Create the desktop SQLite session
                 await createSession({
                   id: sessionId,
-                  model: selectedModel,
+                  model: activeModel,
                   messages: [{ id: crypto.randomUUID(), role: "user", content: text }],
                 });
 
@@ -544,13 +584,9 @@ export default function App() {
                 setChatTitle(shortTitle);
                 setState("chat");
               }}
-              selectedModel={selectedModel}
+              selectedModel={activeModel}
               onModelChange={setSelectedModel}
-              models={models.length > 0 ? models : [
-                "gemini-3-flash-preview",
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-              ]}
+              models={models}
             />
         )}
       </div>

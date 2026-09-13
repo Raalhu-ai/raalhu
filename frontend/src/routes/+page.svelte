@@ -15,7 +15,7 @@
 	import SettingsPage from '$lib/components/SettingsPage.svelte';
 	import { getInspirationCard } from '$lib/inspiration-cards';
 	import { applyTheme, applyFontSize, loadSettings, type Settings } from '$lib/settings';
-	import { switchToProxy, type ModelModule } from '$lib/gemini-api';
+	import { switchToProxy, getModelProvider, type ModelModule } from '$lib/gemini-api';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import type { ChatSession, Project } from '$lib/db';
 	import {
@@ -115,7 +115,7 @@
 
 	onMount(() => {
 		function syncProvider(settings = loadSettings()) {
-			modelProvider = settings.activeModelModule;
+			modelProvider = getModelProvider(settings);
 		}
 
 		syncProvider();

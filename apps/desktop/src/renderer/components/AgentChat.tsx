@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat, Chat } from '@ai-sdk/react';
+import { englishToThaana } from '@raalhu/shared/src/transliterate';
 import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import type { UIMessage } from 'ai';
 import ChatInput, { type ChatInputSendData } from '../ChatInput';
@@ -18,13 +19,16 @@ import { PyodideSandbox } from '../agent/sandbox';
 import { GeminiChatTransport } from '../agent/gemini-transport';
 import { executeToolCall } from '../agent/executor';
 import { getSystemPrompt } from '../agent/prompt';
+import { loadChatMemories } from '../memory';
+import { activeMemoryChats } from '../memory-job';
 import { SPINNER_VERBS, TOOL_VERBS } from '../agent/constants';
 import type { UserInputQuestion, MessageComposeData, RecipeData, WidgetData, Artifact } from '../agent/types';
 import {
 	updateSessionTitle,
 	saveAgentMessages, saveAgentFS, loadAgentFS,
-} from '@raalhu/shared';
-import { fetchWithRetry } from '../agent/retry';
+	registerStorageFlush,
+} from '../storage';
+import { fetchModelRequest } from '../model-request';
 
 interface AgentChatProps {
 	model: string;
@@ -57,11 +61,11 @@ function toolState(state: string): 'running' | 'done' | 'error' {
 /** Desktop title generation via /api/generate (no /api/title endpoint) */
 async function fetchDesktopTitle(message: string): Promise<string> {
 	try {
-		const res = await fetchWithRetry('/api/generate', {
+		const res = await fetchModelRequest('/api/generate', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				model: 'gemini-2.0-flash',
+				model: 'gemini-2.5-flash',
 				contents: [{
 					role: 'user',
 					parts: [{ text: `Generate a short title (max 6 words) in Dhivehi (Thaana script) for a chat that starts with this message. Return ONLY the title, nothing else:\n\n${message}` }]
@@ -73,7 +77,7 @@ async function fetchDesktopTitle(message: string): Promise<string> {
 		const data = await res.json();
 		const candidate = data?.candidates?.[0] || data?.response?.candidates?.[0];
 		const text = candidate?.content?.parts?.[0]?.text?.trim() || '';
-		return text.slice(0, 60);
+		return englishToThaana(text.slice(0, 60));
 	} catch {
 		return '';
 	}
@@ -101,6 +105,10 @@ export function AgentChat({
 	const [renameValue, setRenameValue] = useState('');
 	const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
 	const [artifactMap, setArtifactMap] = useState<Record<string, Artifact>>({});
+	const [storageError, setStorageError] = useState('');
+	const [sendError, setSendError] = useState('');
+	const [fallbackNotice, setFallbackNotice] = useState('');
+	const sendingRef = useRef(false);
 
 	const messagesRef = useRef<HTMLDivElement>(null);
 	const sandboxRef = useRef<PyodideSandbox>(new PyodideSandbox());
@@ -109,9 +117,11 @@ export function AgentChat({
 	const firstUserMessageRef = useRef<string>('');
 
 	// Create transport (stable ref)
-	const transportRef = useRef<GeminiChatTransport>();
+	const transportRef = useRef<GeminiChatTransport | null>(null);
 	if (!transportRef.current) {
 		transportRef.current = new GeminiChatTransport({
+			onFallback: setFallbackNotice,
+			resolveMemories: () => loadChatMemories(sessionId),
 			model,
 			systemInstruction: {
 				role: 'user',
@@ -126,7 +136,7 @@ export function AgentChat({
 	}, [model]);
 
 	// Create Chat instance (stable ref)
-	const chatInstanceRef = useRef<Chat<UIMessage>>();
+	const chatInstanceRef = useRef<Chat<UIMessage> | null>(null);
 	if (!chatInstanceRef.current) {
 		chatInstanceRef.current = new Chat({
 			transport: transportRef.current,
@@ -172,6 +182,8 @@ export function AgentChat({
 						toolName,
 						args as Record<string, unknown>
 					);
+					// Save tool-created files before publishing a downloadable artifact.
+					if (sandbox.ready) await saveAgentFS(sessionId, await sandbox.snapshotFS());
 
 					if (artifact) {
 						setArtifactMap((prev) => ({
@@ -207,7 +219,7 @@ export function AgentChat({
 					const sandbox = sandboxRef.current;
 					if (sandbox.ready) {
 						const fs = await sandbox.snapshotFS();
-						if (Object.keys(fs).length > 0) await saveAgentFS(sessionId, fs);
+						await saveAgentFS(sessionId, fs);
 					}
 				} catch {}
 
@@ -226,6 +238,8 @@ export function AgentChat({
 			onError: (error) => {
 				stopVerbCycle();
 				console.error('[AgentChat] Error:', error);
+				setSendError(error.message || 'The message failed. Please try again.');
+				setSandboxLoading(false);
 			},
 			sendAutomaticallyWhen: ({ messages: msgs }) => {
 				if (!lastAssistantMessageIsCompleteWithToolCalls({ messages: msgs })) {
@@ -254,6 +268,43 @@ export function AgentChat({
 	} = useChat({ chat: chatInstanceRef.current, experimental_throttle: 32 });
 
 	const running = status === 'streaming' || status === 'submitted';
+  useEffect(() => {
+    if (running) activeMemoryChats.add(sessionId);
+    else activeMemoryChats.delete(sessionId);
+    return () => { activeMemoryChats.delete(sessionId); };
+  }, [running, sessionId]);
+	const runningRef = useRef(running);
+	runningRef.current = running;
+	const latestMessages = useRef(messages);
+	latestMessages.current = messages;
+	const lastSaved = useRef('');
+	const checkpoint = useCallback(async () => {
+		if (sendingRef.current) return;
+		const current = (chatInstanceRef.current?.messages || latestMessages.current).map((message, index, all) =>
+			index === all.length - 1 && message.role === 'assistant'
+				? { ...message, metadata: { ...(message.metadata as object || {}), desktopStatus: runningRef.current ? 'interrupted' : 'complete' } }
+				: message);
+		if (!current.length) return;
+		const serialized = JSON.stringify(current);
+		if (serialized === lastSaved.current) return;
+		try {
+			await saveAgentMessages(sessionId, current);
+			lastSaved.current = serialized;
+			setStorageError('');
+		} catch (error) {
+			setStorageError('Conversation could not be saved. Check available disk space and try again.');
+			throw error;
+		}
+	}, [sessionId]);
+	useEffect(() => {
+		const timer = setInterval(() => { void checkpoint().catch(console.error); }, 500);
+		return () => { clearInterval(timer); void checkpoint().catch(console.error); };
+	}, [checkpoint]);
+	useEffect(() => registerStorageFlush(async () => {
+		await chatInstanceRef.current?.stop();
+		await checkpoint();
+		if (sandboxRef.current.ready) await saveAgentFS(sessionId, await sandboxRef.current.snapshotFS());
+	}), [checkpoint, sessionId]);
 
 	// Scroll to bottom on new messages
 	useEffect(() => {
@@ -269,7 +320,7 @@ export function AgentChat({
 		(async () => {
 			if (initialMessages.length > 0) {
 				const fsSnapshot = await loadAgentFS(sessionId);
-				if (fsSnapshot) {
+				if (fsSnapshot && Object.keys(fsSnapshot).length > 0) {
 					setSandboxLoading(true);
 					try {
 						await sandboxRef.current.init();
@@ -293,10 +344,11 @@ export function AgentChat({
 							const output = tp.output as any;
 							if (!output?._artifact) continue;
 							const fname = output._artifact.filename;
-							const matchingPath = Object.keys(fsSnapshot).find(
+							const originalPath = output.path || tp.input?.path;
+							const matchingPath = typeof originalPath === 'string' && Object.hasOwn(fsSnapshot, originalPath) ? originalPath : Object.keys(fsSnapshot).find(
 								(p) => p.endsWith('/' + fname) || p === fname
 							);
-							if (matchingPath && fsSnapshot[matchingPath]) {
+							if (matchingPath && fsSnapshot[matchingPath] !== undefined) {
 								try {
 									const bin = atob(fsSnapshot[matchingPath]);
 									const bytes = new Uint8Array(bin.length);
@@ -329,6 +381,7 @@ export function AgentChat({
 		})();
 
 		return () => {
+			void chatInstanceRef.current?.stop();
 			stopVerbCycle();
 			sandboxRef.current.destroy();
 		};
@@ -356,6 +409,8 @@ export function AgentChat({
 			const text = typeof data === 'string' ? data : data.message;
 			const trimmed = text.trim();
 			if (!trimmed || running || quotaExhausted) return;
+			setSendError('');
+			setFallbackNotice('');
 
 			if (!firstUserMessageRef.current) {
 				firstUserMessageRef.current = trimmed;
@@ -367,6 +422,7 @@ export function AgentChat({
 				try {
 					await sandbox.init();
 				} catch (err: any) {
+					setSendError(`Sandbox initialization failed: ${err.message || 'Please try again.'}`);
 					setSandboxLoading(false);
 					setSandboxStep('');
 					return;
@@ -397,7 +453,26 @@ export function AgentChat({
 				)
 				: undefined;
 
-			await sendMessage({ text: trimmed, files });
+			const userMessage: UIMessage = { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: trimmed }, ...(files || [])] };
+			sendingRef.current = true;
+			try {
+				await saveAgentMessages(sessionId, [...chatInstanceRef.current!.messages, userMessage]);
+				setStorageError('');
+			} catch (error) {
+				setStorageError('Your message could not be saved. Please try again.');
+				setInputValue(trimmed);
+				stopVerbCycle();
+				sendingRef.current = false;
+				return;
+			}
+			const response = sendMessage(userMessage);
+			sendingRef.current = false;
+			try {
+				await response;
+			} catch (error) {
+				setSendError(error instanceof Error ? error.message : 'The message failed. Please try again.');
+				stopVerbCycle();
+			}
 		},
 		[running, quotaExhausted, sendMessage]
 	);
@@ -436,6 +511,9 @@ export function AgentChat({
 	return (
 		<div className="flex-1 flex min-w-0 h-full">
 			<div className="flex-1 flex flex-col min-w-0">
+				{(initialMessages.at(-1)?.metadata as any)?.desktopStatus === 'interrupted' && <div role="status" className="p-3 text-sm text-muted-foreground">The previous response was interrupted. Its saved content is shown below.</div>}
+				{storageError && <div role="alert" className="p-3 text-sm text-destructive">{storageError} <button onClick={() => { void checkpoint().catch(console.error); }}>Retry save</button></div>}
+				{fallbackNotice && <div role="status" className="p-3 text-sm text-muted-foreground">{fallbackNotice}</div>}
 				{/* Top bar */}
 				<div className="px-5 py-3 z-10">
 					{renamingTitle ? (
@@ -667,6 +745,12 @@ export function AgentChat({
 
 				{/* Input area */}
 				<div className="max-w-[760px] mx-auto w-full shrink-0">
+					{sendError && (
+						<div role="alert" className="mx-4 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+							<div className="thaana" dir="rtl">އެރަރެއް ދިމާވެއްޖެ</div>
+							<div dir="ltr" className="break-words">{sendError}</div>
+						</div>
+					)}
 					{quotaExhausted && (
 						<div className="px-4 pt-2">
 							<span className="thaana text-[10px] text-destructive">

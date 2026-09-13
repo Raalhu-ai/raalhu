@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { modelDisplayName } from "@raalhu/shared";
+import { ModelSelector } from "./components/ModelSelector";
 import {
-  Plus, ArrowUp, Sparkles, Check, Paperclip, Camera,
+  Plus, ArrowUp, Check, Paperclip, Camera, Mic,
   Feather, Globe, X, FileText, Archive, ChevronRight, Loader2,
 } from "lucide-react";
 
@@ -77,10 +77,8 @@ export default function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
   const plusMenuRef = useRef<HTMLDivElement>(null);
 
   const [files, setFiles] = useState<AttachedFile[]>([]);
@@ -109,11 +107,8 @@ export default function ChatInput({
 
   // Close menus on outside click
   useEffect(() => {
-    if (!modelMenuOpen && !plusMenuOpen) return;
+    if (!plusMenuOpen) return;
     function handleClick(e: MouseEvent) {
-      if (modelMenuOpen && modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
-        setModelMenuOpen(false);
-      }
       if (plusMenuOpen && plusMenuRef.current && !plusMenuRef.current.contains(e.target as Node)) {
         setPlusMenuOpen(false);
         setStyleMenuOpen(false);
@@ -121,7 +116,7 @@ export default function ChatInput({
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [modelMenuOpen, plusMenuOpen]);
+  }, [plusMenuOpen]);
 
   // File handling
   const handleFiles = useCallback((fileList: FileList | File[]) => {
@@ -424,49 +419,9 @@ export default function ChatInput({
               )}
             </div>
 
-            {/* Model switcher */}
+            {/* Model and thinking effort selector */}
             {models.length > 0 && (
-              <div className="relative" ref={modelMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
-                  className="inline-flex items-center justify-center h-8 gap-1.5 px-2 rounded-lg
-                    text-muted-foreground hover:text-foreground hover:bg-accent
-                    transition-colors duration-200 active:scale-95"
-                >
-                  <Sparkles className="w-[18px] h-[18px]" />
-                  <span className="thaana text-[11px] font-medium max-w-[120px] truncate">
-                    {modelDisplayName(selectedModel)}
-                  </span>
-                </button>
-
-                {/* Model dropdown */}
-                {modelMenuOpen && (
-                  <div
-                    className="absolute bottom-full mb-1 start-0 w-56 bg-popover border border-border
-                      rounded-lg shadow-lg py-1 z-50 animate-fade-in-down"
-                  >
-                    {models.map((model) => (
-                      <button
-                        key={model}
-                        type="button"
-                        onClick={() => {
-                          onModelChange(model);
-                          setModelMenuOpen(false);
-                        }}
-                        className={`thaana w-full flex items-center gap-3 px-3 py-2 text-sm
-                          hover:bg-accent transition-colors
-                          ${selectedModel === model ? "text-foreground font-medium" : "text-muted-foreground"}`}
-                      >
-                        <span>{modelDisplayName(model)}</span>
-                        {selectedModel === model && (
-                          <Check className="w-3.5 h-3.5 ms-auto text-primary" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ModelSelector models={models} selectedModel={selectedModel} onModelChange={onModelChange} />
             )}
 
             {/* Web search toggle */}
@@ -496,6 +451,17 @@ export default function ChatInput({
                 {STYLE_OPTIONS.find((s) => s.id === activeStyle)?.label}
               </span>
             )}
+
+            <span title="coming soon" className="inline-flex cursor-not-allowed">
+              <button
+                type="button"
+                disabled
+                className="pointer-events-none inline-flex items-center justify-center h-8 w-8 rounded-xl text-muted-foreground opacity-50"
+                aria-label="Microphone — coming soon"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            </span>
 
             {/* Send button */}
             <button

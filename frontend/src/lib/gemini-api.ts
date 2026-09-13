@@ -1,3 +1,4 @@
+import { byokFailureKind, byokFailureMessages } from './byok-failure';
 import {
 	loadSettings,
 	saveSettings,
@@ -70,6 +71,11 @@ export function getProviderForModel(modelId: string): AiProvider | undefined {
 export function resolveModelRoute(modelId: string): ModelRouteDecision {
 	const settings = loadSettings();
 	const provider = getProviderForModel(modelId);
+	if (settings.preferredModelModule === 'proxy') {
+		return syncActiveRoute(settings, {
+			module: 'proxy', headers: {}, reason: 'Proxy is selected in settings'
+		});
+	}
 
 	if (!provider) {
 		return syncActiveRoute(settings, {
@@ -138,33 +144,44 @@ export async function validateProviderKey(provider: AiProvider): Promise<ByokKey
 			}
 		});
 		const data = await res.json().catch(() => ({}));
-		if (!res.ok) {
-			updateProviderKeyStatus(provider, 'invalid', data?.error || 'Provider key test failed');
-			return 'invalid';
+		if (loadSettings().byokKeys[provider]?.trim() !== key) return 'untested';
+		if (!res.ok || data?.ok !== true || data?.status !== 'valid') {
+			if (data?.status === 'invalid') {
+				updateProviderKeyStatus(provider, 'invalid', byokFailureMessages.credentials);
+				return 'invalid';
+			}
+			saveSettings({ ...loadSettings(), lastByokError: byokFailureMessages[byokFailureKind(data)] });
+			return 'untested';
 		}
 		updateProviderKeyStatus(provider, 'valid', '');
 		return 'valid';
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		updateProviderKeyStatus(provider, 'invalid', message);
-		return 'invalid';
+		const message = byokFailureMessages[byokFailureKind(err)];
+		if (loadSettings().byokKeys[provider]?.trim() === key) saveSettings({ ...loadSettings(), lastByokError: message });
+		return 'untested';
 	}
 }
 
 export function markProviderKeyFailed(provider: AiProvider, error: unknown): void {
-	const message = error instanceof Error ? error.message : String(error);
-	updateProviderKeyStatus(provider, 'invalid', message || 'BYOK request failed');
+	const kind = byokFailureKind(error);
+	if (kind === 'cancelled') return;
+	const message = byokFailureMessages[kind];
+	if (kind === 'credentials') updateProviderKeyStatus(provider, 'invalid', message);
+	else saveSettings({ ...loadSettings(), lastByokError: message });
 }
 
 export async function fetchWithModelFallback(
 	input: RequestInfo | URL,
 	init: RequestInit,
 	modelId: string,
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	proxyFallback = false
 ): Promise<Response> {
-	const route = resolveModelRoute(modelId);
+	const route: ModelRouteDecision = proxyFallback
+		? { module: 'proxy', headers: {}, reason: 'Retry this request through proxy' }
+		: resolveModelRoute(modelId);
 	const withRouteHeaders = {
-		...(init.headers as Record<string, string> | undefined),
+		...proxyHeaders(init.headers),
 		...route.headers
 	};
 	let response: Response;
@@ -174,7 +191,7 @@ export async function fetchWithModelFallback(
 			headers: withRouteHeaders
 		});
 	} catch (err) {
-		if (route.module !== 'ai-sdk' || !route.provider) throw err;
+		if (init.signal?.aborted || byokFailureKind(err) === 'cancelled' || route.module !== 'ai-sdk' || !route.provider) throw err;
 		markProviderKeyFailed(route.provider, err);
 		const proxyResponse = await fetcher(input, {
 			...init,
@@ -188,8 +205,12 @@ export async function fetchWithModelFallback(
 		return tagResolvedResponse(response, route.module, route.provider);
 	}
 
-	const errorText = await response.text().catch(() => '');
-	markProviderKeyFailed(route.provider, errorText || `BYOK request failed with ${response.status}`);
+	// A backend 401 belongs to session authentication, not Google credentials.
+	if (response.status === 401) return tagResolvedResponse(response, route.module, route.provider);
+	const failure = await response.clone().json().catch(() => ({}));
+	if (init.signal?.aborted) init.signal.throwIfAborted();
+	markProviderKeyFailed(route.provider, failure);
+	if (byokFailureKind(failure) === 'cancelled') return tagResolvedResponse(response, route.module, route.provider);
 
 	const proxyResponse = await fetcher(input, {
 		...init,
@@ -224,6 +245,7 @@ function tagResolvedResponse(
 	provider?: AiProvider,
 	fallback = false
 ): Response {
+	syncActiveRoute(loadSettings(), { module, provider, headers: {}, reason: 'Resolved request route' });
 	const headers = new Headers(response.headers);
 	headers.set(RESOLVED_MODEL_MODULE_HEADER, module);
 	if (provider) headers.set(RESOLVED_AI_PROVIDER_HEADER, provider);
@@ -266,7 +288,8 @@ export function updateProviderKeyStatus(
 	error = ''
 ): void {
 	const settings = loadSettings();
-	const hasValidKey = status === 'valid' && !!settings.byokKeys[provider]?.trim();
+	const hasValidKey = settings.preferredModelModule === 'ai-sdk' && AI_PROVIDERS[provider].enabled &&
+		status === 'valid' && !!settings.byokKeys[provider]?.trim();
 	saveSettings({
 		...settings,
 		byokKeyStatus: { ...settings.byokKeyStatus, [provider]: status },
@@ -280,6 +303,7 @@ export function switchToProxy(error = ''): void {
 	const settings = loadSettings();
 	saveSettings({
 		...settings,
+		preferredModelModule: 'proxy',
 		activeModelModule: 'proxy',
 		activeAiProvider: '',
 		lastByokError: error || settings.lastByokError
@@ -317,13 +341,16 @@ export function clearGeminiApiKey(): void {
 	clearProviderKey('google');
 }
 
-export function getModelProvider(): ModelProvider {
-	return loadSettings().activeModelModule;
+export function getModelProvider(settings = loadSettings()): ModelProvider {
+	return settings.preferredModelModule === 'ai-sdk' && settings.byokKeys.google.trim() &&
+		settings.byokKeyStatus.google === 'valid' ? 'ai-sdk' : 'proxy';
 }
 
 export function setModelProvider(provider: ModelProvider | 'code-assist' | 'gemini-api'): void {
 	if (provider === 'ai-sdk' || provider === 'gemini-api') {
-		updateProviderKeyStatus('google', loadSettings().byokKeyStatus.google);
+		const settings = loadSettings();
+		if (!settings.byokKeys.google.trim() || settings.byokKeyStatus.google !== 'valid') return;
+		saveSettings({ ...settings, preferredModelModule: 'ai-sdk', activeModelModule: 'ai-sdk', activeAiProvider: 'google', lastByokError: '' });
 		return;
 	}
 	switchToProxy();

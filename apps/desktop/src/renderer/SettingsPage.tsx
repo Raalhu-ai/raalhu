@@ -3,7 +3,11 @@ import { loadSettings, saveSettings, applyFontSize, applyTheme, type Settings } 
 import {
   ArrowRight, Sun, Moon, Monitor, Type, Trash2, LogOut, Link2,
 } from "lucide-react";
+import { clearChats } from "./storage";
 import type { User } from "./api";
+import ByokSettings from "./components/ByokSettings";
+import type { ByokStatus } from '../byok-types';
+import { GlobalMemory } from "./components/GlobalMemory";
 
 /* ── Component ── */
 
@@ -20,15 +24,18 @@ const fontSizeOptions: { value: Settings["fontSize"]; label: string }[] = [
 ];
 
 interface SettingsPageProps {
+  onByokChange?: (status: ByokStatus) => void;
   user: User | null;
   onLogout: () => void;
   onBack: () => void;
+  onChatsCleared: () => void;
 }
 
-export default function SettingsPage({ user, onLogout, onBack }: SettingsPageProps) {
+export default function SettingsPage({ user, onLogout, onBack, onChatsCleared, onByokChange }: SettingsPageProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [backupStatus, setBackupStatus] = useState('');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function update(partial: Partial<Settings>) {
@@ -57,11 +64,12 @@ export default function SettingsPage({ user, onLogout, onBack }: SettingsPagePro
   async function clearAllChats() {
     setClearing(true);
     try {
-      // TODO: integrate with Dexie when chat history is wired up
-      localStorage.removeItem("mogger_sessions");
+      await clearChats();
+      onChatsCleared();
       setClearDialogOpen(false);
     } catch (err) {
       console.error("Failed to clear chats:", err);
+      alert("Could not clear conversations. Please try again.");
     } finally {
       setClearing(false);
     }
@@ -136,6 +144,11 @@ export default function SettingsPage({ user, onLogout, onBack }: SettingsPagePro
 
           <div className="h-px bg-border mb-8" />
 
+          {/* Google AI Studio BYOK */}
+          <ByokSettings onStatusChange={onByokChange} />
+
+          <div className="h-px bg-border mb-8" />
+
           {/* Custom Instructions */}
           <section className="mb-8">
             <h2 className="thaana-heading text-xl text-foreground mb-2" style={{ marginTop: 6 }}>ކަސްޓަމް އިރުޝާދު</h2>
@@ -155,9 +168,21 @@ export default function SettingsPage({ user, onLogout, onBack }: SettingsPagePro
 
           <div className="h-px bg-border mb-8" />
 
+          <div className="mb-8">
+            <GlobalMemory />
+          </div>
+          <div className="h-px bg-border mb-8" />
+
           {/* Chat History */}
           <section className="mb-8">
             <h2 className="thaana-heading text-xl text-foreground mb-2" style={{ marginTop: 6 }}>ޗެޓް ހިސްޓްރީ</h2>
+            <button className="text-sm rounded-lg border border-border px-4 py-2 mb-3" onClick={async () => {
+              try {
+                setBackupStatus('');
+                if (await window.platform?.backupStorage()) setBackupStatus('Backup saved.');
+              } catch { setBackupStatus('Could not save backup. Please try again.'); }
+            }}>Save conversation backup</button>
+            {backupStatus && <p role="status" className="text-sm mb-3">{backupStatus}</p>}
             <p className="thaana text-sm text-muted-foreground mb-4">
               ހުރިހާ ޗެޓް ހިސްޓްރީ ފޮހެލާ. މި ޢަމަލު އަނބުރާ ނުގެނެވޭނެ.
             </p>

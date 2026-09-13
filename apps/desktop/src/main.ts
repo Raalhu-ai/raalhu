@@ -1,6 +1,22 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import path from "path";
 import fs from "fs";
+import { OAuthCallbackListener } from "./oauth-callback";
+import { registerByokSettings } from "./byok";
+
+import { startStorage } from "./storage/service";
+
+let closeStorage: (() => Promise<void>) | undefined;
+let flushRenderer: (() => Promise<void>) | undefined;
+let storageClosed = false;
+let quitting = false;
+let mainWindow: BrowserWindow | null = null;
+const oauthCallback = new OAuthCallbackListener(() => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 const icoPath = isDev
@@ -12,20 +28,39 @@ const pngPath = isDev
 const iconPath = process.platform === "win32" ? icoPath : pngPath;
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     backgroundColor: "#242526",
     icon: iconPath,
+    // The renderer provides a transparent drag region above the app controls.
     titleBarStyle: "hiddenInset",
     autoHideMenuBar: true,
     webPreferences: {
+      additionalArguments: [`--raalhu-api-base=${process.env.RAALHU_API_BASE || 'http://127.0.0.1:3000'}`],
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+  mainWindow.on("closed", () => {
+    oauthCallback.stop();
+    mainWindow = null;
+  });
+  const win = mainWindow;
+  let mayClose = false;
+  let closing = false;
+  win.on('close', event => {
+    if (mayClose || storageClosed || !flushRenderer) return;
+    event.preventDefault();
+    if (closing) return;
+    closing = true;
+    flushRenderer().then(() => { mayClose = true; win.close(); }).catch(error => {
+      closing = false;
+      dialog.showErrorBox('Could not save conversations', String(error));
+    });
   });
 
   // Application menu with keyboard shortcuts
@@ -49,13 +84,13 @@ function createWindow() {
         {
           label: "New Chat",
           accelerator: "CmdOrCtrl+N",
-          click: () => mainWindow.webContents.send("shortcut", "new-chat"),
+          click: () => mainWindow?.webContents.send("shortcut", "new-chat"),
         },
         { type: "separator" },
         {
           label: "Settings",
           accelerator: "CmdOrCtrl+,",
-          click: () => mainWindow.webContents.send("shortcut", "settings"),
+          click: () => mainWindow?.webContents.send("shortcut", "settings"),
         },
         { type: "separator" },
         isMac ? { role: "close" } : { role: "quit" },
@@ -102,6 +137,19 @@ ipcMain.handle("open-external", (_event, url: string) => {
   return shell.openExternal(url);
 });
 
+// Only the app's top-level renderer may manage its pending OAuth callback.
+for (const action of ["start", "read", "stop"] as const) {
+  ipcMain.handle(`oauth-callback-${action}`, (event, state: unknown) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame ||
+        typeof state !== "string" || !state || state.length > 256) {
+      throw new Error("Invalid OAuth callback request.");
+    }
+    return oauthCallback[action](state);
+  });
+}
+
+app.on("before-quit", () => oauthCallback.stop());
+
 ipcMain.handle("save-file", async (_event, data: string, filename: string) => {
   const win = BrowserWindow.getFocusedWindow();
   if (!win) return false;
@@ -123,7 +171,33 @@ ipcMain.handle("save-file", async (_event, data: string, filename: string) => {
   return true;
 });
 
-app.whenReady().then(createWindow);
+if (!app.requestSingleInstanceLock()) app.quit();
+else app.whenReady().then(async () => {
+  const storage = await startStorage(() => mainWindow);
+  registerByokSettings(() => mainWindow, storage.byok);
+  closeStorage = storage.close;
+  flushRenderer = storage.flush;
+  createWindow();
+}).catch(error => {
+  dialog.showErrorBox("Unable to open desktop storage", String(error));
+  app.quit();
+});
+app.on("second-instance", () => { mainWindow?.show(); mainWindow?.focus(); });
+app.on("before-quit", event => {
+  if (!closeStorage || storageClosed) return;
+  event.preventDefault();
+  if (quitting) return;
+  quitting = true;
+  (async () => {
+    await flushRenderer?.();
+    await closeStorage();
+    storageClosed = true;
+    app.quit();
+  })().catch(error => {
+    quitting = false;
+    dialog.showErrorBox('Could not save conversations', String(error));
+  });
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -132,7 +206,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (closeStorage && !storageClosed && BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });

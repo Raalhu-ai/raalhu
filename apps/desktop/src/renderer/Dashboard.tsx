@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { STARTERS, getGreeting, getFirstName } from "@raalhu/shared";
+import { STARTERS } from "@raalhu/shared/src/modes";
+import { getGreeting, getFirstName } from "@raalhu/shared/src/greetings";
 import {
   FileText, RefreshCw, FileDown, Languages, Search, Globe, Bot,
 } from "lucide-react";

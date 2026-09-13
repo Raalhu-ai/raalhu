@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { testByokKey } from './byok-test';
 import { ANTIGRAVITY_REDIRECT_URI, parseAntigravityCallback } from './antigravity-oauth';
 import { cors } from 'hono/cors';
 import {
@@ -62,6 +63,8 @@ app.use(
 );
 
 // --- PKCE ---
+// Like the former SvelteKit endpoint, validation uses only the supplied Google key.
+app.post('/api/byok-test', c => testByokKey(c.req.raw));
 
 async function generatePKCE(): Promise<{ verifier: string; challenge: string }> {
 	const verifier = [crypto.randomUUID(), crypto.randomUUID()].join('').replace(/-/g, '');

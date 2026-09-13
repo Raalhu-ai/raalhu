@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus } from 'lucide-react';
-import type { Project } from '@raalhu/shared';
-import { formatRelativeTime } from '@raalhu/shared';
+import type { Project } from '../storage';
+import { formatRelativeTime } from '../storage';
 
 interface ProjectsListPageProps {
 	projects: Project[];

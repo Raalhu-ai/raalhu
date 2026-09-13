@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { englishToThaana } from '@raalhu/shared';
+import { englishToThaana } from '@raalhu/shared/src/transliterate';
 import { ChevronDown, ChevronLeft, Brain } from 'lucide-react';
 import { parseMarkdown } from '../lib/markdown';
 

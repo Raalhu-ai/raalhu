@@ -2,6 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+.model-effort-slider {
+  appearance: none;
+  height: 32px;
+  border-radius: 9999px;
+  background: rgb(var(--accent));
+  border: 1px solid rgb(var(--border));
+  cursor: pointer;
+}
+
+.model-effort-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(var(--foreground));
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}
+
+.model-effort-slider:focus-visible {
+  outline: 2px solid rgb(var(--primary));
+  outline-offset: 4px;
+}
+
+/* Transparent macOS title bar: the page background remains visible beneath it. */
+.desktop-window-drag {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 38px;
+  z-index: 100;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* Keep main controls clear of the traffic lights; sidebar content starts at the top. */
+.desktop-macos .desktop-main-content {
+  padding-top: 38px;
+}
+
+/* Leave the sidebar header interactive beside the transparent drag region. */
+.desktop-macos:has(.desktop-sidebar) .desktop-window-drag {
+  inset-inline-start: 260px;
+}
+
+.desktop-macos:has(.desktop-sidebar-collapsed) .desktop-window-drag {
+  inset-inline-start: 56px;
+}
+
+.desktop-macos .desktop-login-back {
+  top: 48px;
+}
+
 /* --- Thaana Fonts --- */
 @font-face {
   font-family: "MV Typewriter";

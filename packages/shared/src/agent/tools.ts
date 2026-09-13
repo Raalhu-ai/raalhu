@@ -169,8 +169,8 @@ export const AGENT_TOOLS = [
 									amount: { type: 'NUMBER', description: 'Quantity' },
 									unit: {
 										type: 'STRING',
-										description: 'Unit of measurement',
-										enum: ['g', 'kg', 'oz', 'lb', 'ml', 'l', 'tsp', 'tbsp', 'cup', 'fl_oz', 'pinch', 'piece', '']
+										description: 'Unit of measurement. Omit for countable items (e.g. 3 eggs)',
+										enum: ['g', 'kg', 'oz', 'lb', 'ml', 'l', 'tsp', 'tbsp', 'cup', 'fl_oz', 'pinch', 'piece']
 									}
 								},
 								required: ['id', 'name', 'amount']

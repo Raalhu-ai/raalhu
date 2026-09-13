@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { modelDisplayName } from "@raalhu/shared";
+import { modelDisplayName } from "@raalhu/shared/src/modes";
 import {
   Waves, Plus, PanelLeft, MessageSquare, MessageSquareDashed,
   FolderOpen, Sparkles, Settings, LogOut, EllipsisVertical,
@@ -17,6 +17,7 @@ export interface ChatSession {
 type NavTab = "chat" | "projects" | "artifacts";
 
 interface SidebarProps {
+  usingByok?: boolean;
   user: User | null;
   sessions: ChatSession[];
   activeSessionId: string | null;
@@ -58,6 +59,7 @@ function formatResetTime(resetTime: string): string {
 }
 
 export default function Sidebar({
+  usingByok = false,
   user,
   sessions,
   activeSessionId,
@@ -81,7 +83,7 @@ export default function Sidebar({
   const [quotaOpen, setQuotaOpen] = useState(false);
   const [countdownText, setCountdownText] = useState("");
 
-  const selectedQuota = quotas.find((q) => q.modelId === selectedModel);
+  const selectedQuota = usingByok ? undefined : quotas.find((q) => q.modelId === selectedModel);
   const selectedPct = selectedQuota ? quotaPct(selectedQuota) : 0;
 
   // Countdown timer for quota reset
@@ -266,12 +268,18 @@ export default function Sidebar({
       {/* Bottom section: Quota + User */}
       <div className="shrink-0 flex flex-col gap-3 border-t border-border pt-3 px-2">
         {/* Quota bar */}
-        <div className="relative">
+        {usingByok ? (
+          <div className="rounded-lg px-2 py-1.5 space-y-1">
+            <div className="text-xs font-medium" dir="ltr">Google AI Studio · BYOK</div>
+            <p className="thaana text-[11px] text-muted-foreground" dir="rtl">އޭއައި ސްޓޫޑިއޯގެ ކޯޓާ މިތާ ނުދައްކާ.</p>
+          </div>
+        ) : <div className="relative">
           <button
             onClick={(e) => { e.stopPropagation(); setQuotaOpen(!quotaOpen); }}
             className="flex flex-col gap-1 w-full cursor-pointer rounded-lg py-1.5 px-2
               hover:bg-accent/50 transition-colors duration-150 bg-transparent border-none text-start"
           >
+            <span className="text-[10px] text-muted-foreground" dir="ltr">Antigravity proxy</span>
             <div className="flex items-center gap-2 w-full">
               <div className="flex-1 min-w-0">
                 <div className="h-1.5 bg-border rounded-full overflow-hidden">
@@ -341,7 +349,7 @@ export default function Sidebar({
               ) : null}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* User profile */}
         {user ? (

@@ -3,7 +3,7 @@
 	import { Chat, type Message } from '@ai-sdk/svelte';
 	import { marked } from 'marked';
 	import { fetchMe, setupCodeAssist, logout } from '$lib/api';
-	import { getGeminiApiHeaders, switchToProxy as setProxyRoute, type ModelModule } from '$lib/gemini-api';
+	import { getGeminiApiHeaders, getModelProvider, switchToProxy as setProxyRoute, type ModelModule } from '$lib/gemini-api';
 	import { loadSettings, type Settings } from '$lib/settings';
 	import { Loader2, Send, Plus, LogOut, Coffee, KeyRound, Sparkles } from 'lucide-svelte';
 
@@ -48,7 +48,7 @@
 
 	onMount(() => {
 		function syncProvider(settings = loadSettings()) {
-			modelProvider = settings.activeModelModule;
+			modelProvider = getModelProvider(settings);
 		}
 
 		syncProvider();
