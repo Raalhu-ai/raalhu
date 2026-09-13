@@ -70,7 +70,7 @@ jobs:
         # build has already rebuilt and tested SQLite for this native runner.
         # electron-builder 25 cannot reinstall Bun workspaces (it runs Bun through Node).
         working-directory: apps/desktop
-        run: bun run electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+        run: bun scripts/package-installers.ts --${{ matrix.platform }} --${{ matrix.arch }} --publish never
         env:
           # Optional: unsigned community builds work without signing credentials.
           CSC_LINK: ${{ matrix.platform == 'mac' && secrets.MAC_CSC_LINK || '' }}

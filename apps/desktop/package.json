@@ -71,7 +71,7 @@
     "dev": "bun run rebuild:native && electron-vite dev",
     "build": "bun run rebuild:native && electron-vite build",
     "preview": "electron-vite preview",
-    "package": "bun run build && electron-builder",
+    "package": "bun run build && bun scripts/package-installers.ts",
     "typecheck": "tsc --noEmit",
     "rebuild:native": "bun scripts/rebuild-native.ts",
     "test:storage": "bun scripts/test-storage.ts",
