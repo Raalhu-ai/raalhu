@@ -12,5 +12,6 @@
       "react-native": ["react-native-web"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/renderer/voice.ts", "src/renderer/transcribe.ts"]
 }

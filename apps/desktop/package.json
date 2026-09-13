@@ -12,13 +12,28 @@
       "output": "release"
     },
     "win": {
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
     },
     "mac": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
     },
     "linux": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "executableName": "raalhu",
+      "maintainer": "Raalhu contributors"
     },
     "extraResources": [
       {
@@ -28,6 +43,10 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "../../LICENSE",
+        "to": "LICENSE"
       }
     ],
     "electronVersion": "33.4.11",
@@ -39,7 +58,13 @@
       "dist/preload/**/*",
       "dist/renderer/**/*",
       "package.json"
-    ]
+    ],
+    "artifactName": "Raalhu-${version}-${os}-${arch}.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "scripts": {
     "dev": "bun run rebuild:native && electron-vite dev",
@@ -66,7 +91,7 @@
     "ai": "^5.0.149",
     "autoprefixer": "^10.4.27",
     "docx-preview": "^0.3.7",
-    "electron": "^33.0.0",
+    "electron": "33.4.11",
     "electron-builder": "^25",
     "electron-vite": "^2",
     "fake-indexeddb": "^6.2.5",
@@ -82,5 +107,8 @@
     "typescript": "^5",
     "vite": "^5",
     "xlsx": "^0.18.5"
-  }
+  },
+  "description": "Raalhu bilingual desktop AI assistant",
+  "author": "Raalhu contributors",
+  "homepage": "https://github.com/Raalhu-ai/raalhu"
 }

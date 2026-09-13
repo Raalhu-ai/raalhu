@@ -1,3 +1,4 @@
+import { getApiBase } from './api-base';
 import { byokFailureKind, byokFailureMessages } from './byok-failure';
 import { app, ipcMain, safeStorage, type BrowserWindow } from 'electron';
 import { createHash } from 'node:crypto';
@@ -15,7 +16,7 @@ export function registerByokSettings(getWindow: () => BrowserWindow | null, sett
   const storageAvailable = () => safeStorage.isEncryptionAvailable() &&
     (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text');
   // Host configuration only: IPC callers cannot redirect credentials to another server.
-  const backend = new URL(process.env.RAALHU_API_BASE || 'http://127.0.0.1:3000');
+  const backend = new URL(getApiBase());
   if (backend.protocol !== 'https:' && !(backend.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(backend.hostname))) {
     throw new Error('BYOK requires an HTTPS backend or a local development backend.');
   }

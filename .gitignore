@@ -60,3 +60,7 @@ _archive/
 
 # Temp files
 tmpclaude-*
+
+# Desktop installers
+apps/desktop/release/
+apps/desktop/RELEASING.md

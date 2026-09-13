@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 const _self = self as unknown as DedicatedWorkerGlobalScope;
 
 let pyodide: any = null;

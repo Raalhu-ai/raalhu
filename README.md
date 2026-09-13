@@ -4,6 +4,12 @@
 
 An AI-powered assistant with a bilingual (Dhivehi/English) interface, built as a multi-platform monorepo. Features chat streaming, multi-turn agent tool calling, a Pyodide Python sandbox, document generation, and more — across web, mobile, desktop, and browser extension.
 
+## Desktop downloads
+
+Download desktop installers from [GitHub Releases](https://github.com/Raalhu-ai/raalhu/releases). If no desktop release has been published yet, installers will appear there after the first release. Choose Windows `.exe`, macOS `.dmg` for your processor, or Linux `.AppImage`/`.deb` under Assets. No developer tools or local server are needed for official builds; internet access and your own account are required.
+
+The app connects to the backend identified in its release notes. BYOK requests also pass through that backend. See [desktop release setup](apps/desktop/RELEASING.md) for building from source, self-hosted backend configuration, and publishing installers.
+
 ## Architecture
 
 ```

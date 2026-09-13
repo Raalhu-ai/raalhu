@@ -10,7 +10,7 @@ const desktopAdapter: PlatformAdapter = {
 	async presentFile(sandbox: SandboxLike, path: string, label: string): Promise<ToolResult> {
 		const bytes = await sandbox.readFileBytes(path);
 		const mimeType = getMimeType(path);
-		const blob = new Blob([bytes.buffer], { type: mimeType });
+		const blob = new Blob([new Uint8Array(bytes)], { type: mimeType });
 		const uri = URL.createObjectURL(blob);
 		const filename = getFilename(path);
 		return {

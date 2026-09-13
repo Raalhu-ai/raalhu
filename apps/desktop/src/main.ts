@@ -1,3 +1,4 @@
+import { getApiBase } from './api-base';
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import path from "path";
 import fs from "fs";
@@ -39,7 +40,7 @@ function createWindow() {
     titleBarStyle: "hiddenInset",
     autoHideMenuBar: true,
     webPreferences: {
-      additionalArguments: [`--raalhu-api-base=${process.env.RAALHU_API_BASE || 'http://127.0.0.1:3000'}`],
+      additionalArguments: [`--raalhu-api-base=${getApiBase()}`],
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
